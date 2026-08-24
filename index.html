@@ -321,13 +321,17 @@ function procesar(d) {
   S.log   = d.log || [];
 
   S.filas = (d.datos || []).map(r => {
-    const lista = +r.original_price || +r.precio_lista || 0;
+    // original_price es el precio de lista real. precio_vidriera ya viene con
+    // el descuento aplicado si hay una promo corriendo, así que no sirve de base.
+    const lista = +r.original_price || +r.precio_vidriera || +r.precio_lista || 0;
     const max   = r.max_disc  === '' ? null : +r.max_disc;
     const min   = r.min_disc  === '' ? null : +r.min_disc;
     const sug   = r.sugerido  === '' ? null : +r.sugerido;
     const pp    = r.precio_promo === '' ? null : +r.precio_promo;
     return {
-      id:r.item_id, sku:r.sku, titulo:r.titulo, foto:r.foto, link:r.link,
+      // sku viene numérico desde Sheets; forzarlo a string o rompe el buscador
+      id:String(r.item_id||''), sku:String(r.sku||''), titulo:String(r.titulo||''),
+      foto:r.foto, link:r.link,
       lista, stock:+r.stock||0, listingType:r.listing_type, cuotas:r.cuotas,
       envioGratis:r.envio_gratis==='SI', catalogo:r.catalogo==='SI',
       tipo:r.promo_tipo, promoId:r.promo_id, promo:r.promo_nombre, status:r.status,
@@ -336,7 +340,9 @@ function procesar(d) {
       meliPct: r['meli_%']==='' ? null : +r['meli_%'],
       sellerPct: r['seller_%']==='' ? null : +r['seller_%'],
       boost: r.boost === 'SI',
-      inicio:r.inicio, fin:r.fin, stockReq:r.stock_req,
+      inicio:r.inicio, fin:r.fin,
+      stockMin: r.stock_min === '' ? null : +r.stock_min,
+      stockMax: r.stock_max === '' ? null : +r.stock_max,
       subType:r.sub_type, montoFijo:r.monto_fijo, pctFijo:r.pct_fijo,
       pisoPct: (max && lista) ? (1 - max/lista)*100 : null,
       techoPct:(min && lista) ? (1 - min/lista)*100 : null,
@@ -761,8 +767,8 @@ function abrirSumar(o) {
       <span class="help" id="fCalc"></span>
     </div>
     ${lightning?`<div class="fld"><label>Stock a reservar</label>
-      <input type="number" id="fStock" value="${p.stockReq?String(p.stockReq).split('-')[0]:1}" min="1">
-      <span class="help">Requerido por Meli: ${esc(p.stockReq||'—')} unidades. Cuando se agota, la oferta termina.</span></div>`:''}
+      <input type="number" id="fStock" value="${p.stockMin||1}" min="${p.stockMin||1}" ${p.stockMax?`max="${p.stockMax}"`:''}>
+      <span class="help">Meli pide entre ${p.stockMin??'—'} y ${p.stockMax??'—'} unidades. Cuando se agota, la oferta termina.</span></div>`:''}
     ${p.tipo==='PRICE_DISCOUNT'?`<div class="aviso">Máximo 14 días. Descuento entre 5% y 80%.
       Si el ítem ya está en un DEAL, este descuento no se aplica hasta que el DEAL termine.</div>`:''}
     `}
