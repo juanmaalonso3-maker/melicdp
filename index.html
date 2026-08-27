@@ -17,7 +17,7 @@
   --warn:#8A5D06; --warnbg:#F8EBD1;
   --bad:#A63A2E; --badbg:#F8E2DE;
   --shadow:0 1px 2px rgba(21,32,30,.06),0 10px 28px -20px rgba(21,32,30,.3);
-  --r:7px;
+  --r:8px;
 }
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
   --ground:#0D1312; --panel:#151E1C; --panel2:#1C2624; --panel3:#24302D;
@@ -40,34 +40,22 @@
   --shadow:0 1px 2px rgba(0,0,0,.35),0 10px 28px -20px rgba(0,0,0,.7);
 }
 *{box-sizing:border-box;margin:0;padding:0}
-body{
-  background:var(--ground);color:var(--ink);
-  font:14px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
-  -webkit-font-smoothing:antialiased;
-}
-h1,h2,h3,.ui{font-family:"Bricolage Grotesque",system-ui,sans-serif;letter-spacing:-.01em}
-.mono,.n{font-family:"JetBrains Mono",ui-monospace,monospace;font-variant-numeric:tabular-nums}
+body{background:var(--ground);color:var(--ink);
+  font:14px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-font-smoothing:antialiased}
+h1,h2,h3{font-family:"Bricolage Grotesque",system-ui,sans-serif;letter-spacing:-.015em}
+.n{font-family:"JetBrains Mono",ui-monospace,monospace;font-variant-numeric:tabular-nums}
 button,input,select{font:inherit;color:inherit}
 a{color:var(--acc)}
 
-/* ── estructura ───────────────────────────────────────────── */
 #app{display:grid;grid-template-columns:1fr;min-height:100vh}
-@media(min-width:900px){#app{grid-template-columns:210px 1fr}}
-
-aside{
-  background:var(--panel);border-right:1px solid var(--line);
-  display:flex;flex-direction:column;gap:2px;padding:18px 12px;
-}
+@media(min-width:900px){#app{grid-template-columns:206px 1fr}}
+aside{background:var(--panel);border-right:1px solid var(--line);display:flex;flex-direction:column;gap:2px;padding:18px 12px}
 @media(min-width:900px){aside{position:sticky;top:0;height:100vh}}
 .brand{padding:4px 10px 18px;display:flex;flex-direction:column;gap:2px}
 .brand b{font-family:"Bricolage Grotesque";font-size:17px;font-weight:700}
 .brand span{font-size:10.5px;letter-spacing:.13em;text-transform:uppercase;color:var(--ink3);font-family:"JetBrains Mono"}
-nav{display:flex;flex-direction:column;gap:2px}
-.nav{
-  display:flex;align-items:center;gap:9px;padding:8px 11px;border-radius:var(--r);
-  border:0;background:none;cursor:pointer;text-align:left;width:100%;
-  font-family:"Bricolage Grotesque";font-weight:500;font-size:13.5px;color:var(--ink2);
-}
+.nav{display:flex;align-items:center;gap:9px;padding:8px 11px;border-radius:var(--r);border:0;background:none;
+  cursor:pointer;text-align:left;width:100%;font-family:"Bricolage Grotesque";font-weight:500;font-size:13.5px;color:var(--ink2)}
 .nav:hover{background:var(--panel2);color:var(--ink)}
 .nav[aria-current="true"]{background:var(--acc2);color:var(--acc);font-weight:700}
 .nav .b{margin-left:auto;font:600 10.5px "JetBrains Mono";background:var(--panel3);color:var(--ink2);padding:1px 6px;border-radius:20px}
@@ -76,99 +64,107 @@ nav{display:flex;flex-direction:column;gap:2px}
 .side-foot small{color:var(--ink3);font-size:11px;line-height:1.45}
 
 main{min-width:0;display:flex;flex-direction:column}
-.bar{
-  position:sticky;top:0;z-index:20;background:var(--ground);
-  border-bottom:1px solid var(--line);padding:16px 22px;
-  display:flex;flex-wrap:wrap;gap:12px;align-items:center;
-}
-.bar h1{font-size:20px;font-weight:700;margin-right:auto}
-.bar .sub{font-size:12px;color:var(--ink3);width:100%;margin-top:-6px}
-.wrap{padding:22px;display:flex;flex-direction:column;gap:18px}
+.bar{position:sticky;top:0;z-index:30;background:var(--ground);border-bottom:1px solid var(--line);
+  padding:14px 22px;display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.bar h1{font-size:19px;font-weight:700;margin-right:auto}
+.wrap{padding:20px 22px 60px;display:flex;flex-direction:column;gap:16px}
 
-/* ── controles ────────────────────────────────────────────── */
-.btn{
-  border:1px solid var(--line2);background:var(--panel);border-radius:var(--r);
-  padding:7px 13px;cursor:pointer;font-family:"Bricolage Grotesque";font-weight:500;font-size:13px;
-  display:inline-flex;align-items:center;gap:7px;white-space:nowrap;
-}
+.btn{border:1px solid var(--line2);background:var(--panel);border-radius:6px;padding:7px 13px;cursor:pointer;
+  font-family:"Bricolage Grotesque";font-weight:500;font-size:13px;display:inline-flex;align-items:center;gap:7px;white-space:nowrap}
 .btn:hover{background:var(--panel2)}
 .btn.p{background:var(--acc);border-color:var(--acc);color:#fff;font-weight:700}
-:root[data-theme="dark"] .btn.p,
-@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .btn.p{color:#08201D}}
 .btn.p:hover{filter:brightness(1.08)}
 .btn.sm{padding:4px 9px;font-size:12px}
+.btn.xs{padding:2px 7px;font-size:11px;font-family:"JetBrains Mono"}
 .btn:disabled{opacity:.45;cursor:not-allowed}
 .btn.danger{color:var(--bad);border-color:var(--bad)}
 input[type=text],input[type=number],input[type=password],select{
-  border:1px solid var(--line2);background:var(--panel);border-radius:var(--r);padding:7px 10px;
-}
+  border:1px solid var(--line2);background:var(--panel);border-radius:6px;padding:7px 10px}
 input:focus-visible,select:focus-visible,.btn:focus-visible,.nav:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
-.search{min-width:190px;flex:1;max-width:320px}
 
-/* ── tarjetas KPI ─────────────────────────────────────────── */
-.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}
-.kpi{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:14px 16px;display:flex;flex-direction:column;gap:3px}
-.kpi .k{font:400 10.5px/1 "JetBrains Mono";letter-spacing:.1em;text-transform:uppercase;color:var(--ink3)}
-.kpi .v{font-family:"JetBrains Mono";font-weight:600;font-size:25px;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
-.kpi .d{font-size:11.5px;color:var(--ink3)}
-.kpi.hot .v{color:var(--bad)}
-.kpi.good .v{color:var(--ok)}
+/* ── buscador SKU grande ── */
+.buscador{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+#qsku{font-family:"JetBrains Mono";font-size:17px;padding:12px 14px;min-width:230px;flex:1;max-width:420px;letter-spacing:.02em}
+.sugs{display:flex;gap:6px;flex-wrap:wrap}
+.sug{border:1px solid var(--line2);background:var(--panel);border-radius:20px;padding:5px 12px;cursor:pointer;
+  font:600 12px "JetBrains Mono"}
+.sug:hover{border-color:var(--acc);color:var(--acc)}
+.sug small{font-family:system-ui;font-weight:400;color:var(--ink3);margin-left:6px}
 
-/* ── paneles y tablas ─────────────────────────────────────── */
+/* ── cabecera de SKU ── */
+.hero{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:18px 20px;
+  display:flex;gap:18px;align-items:flex-start;flex-wrap:wrap;box-shadow:var(--shadow)}
+.hero img{width:64px;height:64px;object-fit:contain;border-radius:6px;background:var(--panel2);flex:none}
+.hero .txt{flex:1;min-width:200px;display:flex;flex-direction:column;gap:4px}
+.hero .sk{font:600 12px "JetBrains Mono";letter-spacing:.1em;color:var(--acc)}
+.hero h2{font-size:19px;font-weight:700;line-height:1.2}
+.hero .stats{display:flex;gap:20px;flex-wrap:wrap;margin-top:6px}
+.hero .stats div{display:flex;flex-direction:column}
+.hero .stats span{font:400 10px "JetBrains Mono";letter-spacing:.09em;text-transform:uppercase;color:var(--ink3)}
+.hero .stats b{font-family:"JetBrains Mono";font-size:17px;font-variant-numeric:tabular-nums}
+
+/* ── matriz ── */
 .panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);overflow:hidden;box-shadow:var(--shadow)}
-.panel>h2{font-size:14px;font-weight:700;padding:13px 16px;border-bottom:1px solid var(--line);display:flex;gap:10px;align-items:center}
-.panel>h2 .hint{font-family:system-ui;font-weight:400;font-size:12px;color:var(--ink3);margin-left:auto}
+.panel>h3{font-size:13.5px;font-weight:700;padding:12px 16px;border-bottom:1px solid var(--line);
+  display:flex;gap:10px;align-items:center}
+.panel>h3 .hint{font-family:system-ui;font-weight:400;font-size:12px;color:var(--ink3);margin-left:auto}
 .scroll{overflow-x:auto}
 table{border-collapse:collapse;width:100%;font-size:13px}
-th{
-  position:sticky;top:0;background:var(--panel2);z-index:2;
-  font:400 10px/1 "JetBrains Mono";letter-spacing:.09em;text-transform:uppercase;color:var(--ink3);
-  text-align:left;padding:10px 12px;border-bottom:1px solid var(--line2);white-space:nowrap;
-}
+th{position:sticky;top:0;background:var(--panel2);z-index:2;font:400 10px/1.3 "JetBrains Mono";
+  letter-spacing:.08em;text-transform:uppercase;color:var(--ink3);text-align:left;padding:9px 11px;
+  border-bottom:1px solid var(--line2);white-space:nowrap;vertical-align:bottom}
 th.r,td.r{text-align:right}
-td{padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:middle}
+th.c,td.c{text-align:center}
+td{padding:8px 11px;border-bottom:1px solid var(--line);vertical-align:middle}
 tbody tr:hover{background:var(--panel2)}
 tbody tr:last-child td{border-bottom:0}
-.tit{display:flex;gap:9px;align-items:center;min-width:230px}
-.tit img{width:30px;height:30px;object-fit:contain;border-radius:4px;background:var(--panel2);flex:none}
-.tit b{display:block;font-weight:600;font-size:12.5px;line-height:1.3}
-.tit small{color:var(--ink3);font:400 10.5px "JetBrains Mono"}
+.matriz th:first-child,.matriz td:first-child{position:sticky;left:0;background:var(--panel);z-index:1;min-width:150px}
+.matriz thead th:first-child{background:var(--panel2);z-index:3}
+.matriz tr:hover td:first-child{background:var(--panel2)}
+.celda{display:flex;flex-direction:column;gap:2px;align-items:center;font-size:11px}
+.celda .pz{font-family:"JetBrains Mono";font-variant-numeric:tabular-nums;font-size:11.5px}
 
-.chip{display:inline-flex;align-items:center;gap:4px;font:600 10px/1 "JetBrains Mono";letter-spacing:.05em;text-transform:uppercase;padding:3px 7px;border-radius:4px;white-space:nowrap}
+.chip{display:inline-flex;align-items:center;gap:4px;font:600 9.5px/1 "JetBrains Mono";letter-spacing:.05em;
+  text-transform:uppercase;padding:3px 6px;border-radius:4px;white-space:nowrap}
 .chip.ok{background:var(--okbg);color:var(--ok)}
 .chip.warn{background:var(--warnbg);color:var(--warn)}
 .chip.bad{background:var(--badbg);color:var(--bad)}
 .chip.mut{background:var(--panel3);color:var(--ink3)}
 .chip.acc{background:var(--acc2);color:var(--acc)}
-.dot{width:7px;height:7px;border-radius:50%;display:inline-block}
 
-/* ── tarjetas de campaña ──────────────────────────────────── */
-.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(265px,1fr));gap:12px}
-.card{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:15px 16px;display:flex;flex-direction:column;gap:9px;border-top:3px solid var(--line2);box-shadow:var(--shadow)}
-.card.urg{border-top-color:var(--bad)}
-.card.pron{border-top-color:var(--warn)}
-.card.calm{border-top-color:var(--ok)}
-.card .tipo{font:400 10px "JetBrains Mono";letter-spacing:.09em;color:var(--ink3)}
-.card .nom{font-family:"Bricolage Grotesque";font-weight:700;font-size:15px;line-height:1.2}
-.card .venc{font-size:12px;color:var(--ink2);display:flex;justify-content:space-between;gap:8px}
-.card .venc b{font-family:"JetBrains Mono";font-variant-numeric:tabular-nums}
-.card .cnt{display:flex;gap:6px;flex-wrap:wrap;margin-top:2px}
-
-/* ── barra de progreso reloj ──────────────────────────────── */
-.prog{height:5px;border-radius:3px;background:var(--panel3);overflow:hidden;min-width:70px}
+/* ── bloque publicación ── */
+.pub{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);overflow:hidden;box-shadow:var(--shadow)}
+.pub-h{padding:13px 16px;border-bottom:1px solid var(--line);display:flex;gap:12px;align-items:center;flex-wrap:wrap;
+  background:var(--panel2)}
+.pub-h .cuota{font-family:"Bricolage Grotesque";font-weight:700;font-size:14.5px}
+.pub-h .id{font:400 10.5px "JetBrains Mono";color:var(--ink3)}
+.pub-h .sep{margin-left:auto;display:flex;gap:14px;align-items:center;flex-wrap:wrap;font-size:12px}
+.pub-h .sep b{font-family:"JetBrains Mono";font-variant-numeric:tabular-nums}
+.conds{display:flex;gap:5px;flex-wrap:wrap}
+.reloj{display:flex;align-items:center;gap:7px;font-size:11.5px;color:var(--ink2)}
+.prog{height:5px;width:64px;border-radius:3px;background:var(--panel3);overflow:hidden}
 .prog i{display:block;height:100%;background:var(--acc)}
 .prog.done i{background:var(--ok)}
 
-/* ── selección en lote ────────────────────────────────────── */
-.lote{
-  position:sticky;bottom:0;z-index:15;background:var(--panel);border:1px solid var(--acc);
-  border-radius:var(--r);padding:11px 15px;display:flex;gap:11px;align-items:center;flex-wrap:wrap;
-  box-shadow:0 -6px 24px -16px rgba(0,0,0,.4);
-}
-.lote b{font-family:"JetBrains Mono"}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:11px}
+.kpi{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:13px 15px;display:flex;flex-direction:column;gap:2px}
+.kpi .k{font:400 10px/1 "JetBrains Mono";letter-spacing:.09em;text-transform:uppercase;color:var(--ink3)}
+.kpi .v{font-family:"JetBrains Mono";font-weight:600;font-size:23px;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+.kpi .d{font-size:11px;color:var(--ink3)}
+.kpi.hot .v{color:var(--bad)}
+.kpi.good .v{color:var(--ok)}
 
-/* ── modal ────────────────────────────────────────────────── */
-dialog{border:1px solid var(--line);border-radius:10px;background:var(--panel);color:var(--ink);padding:0;max-width:520px;width:calc(100% - 32px);box-shadow:0 24px 60px -20px rgba(0,0,0,.5)}
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:11px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:14px 15px;
+  display:flex;flex-direction:column;gap:8px;border-top:3px solid var(--line2);box-shadow:var(--shadow)}
+.card.urg{border-top-color:var(--bad)} .card.pron{border-top-color:var(--warn)} .card.calm{border-top-color:var(--ok)}
+.card .tipo{font:400 9.5px "JetBrains Mono";letter-spacing:.09em;color:var(--ink3)}
+.card .nom{font-family:"Bricolage Grotesque";font-weight:700;font-size:14.5px;line-height:1.2}
+.card .venc{font-size:11.5px;color:var(--ink2);display:flex;justify-content:space-between;gap:8px}
+.card .venc b{font-family:"JetBrains Mono";font-variant-numeric:tabular-nums}
+
+dialog{border:1px solid var(--line);border-radius:10px;background:var(--panel);color:var(--ink);padding:0;
+  max-width:520px;width:calc(100% - 32px);box-shadow:0 24px 60px -20px rgba(0,0,0,.5)}
 dialog::backdrop{background:rgba(10,18,16,.55)}
 .dlg-h{padding:16px 20px;border-bottom:1px solid var(--line);font-family:"Bricolage Grotesque";font-weight:700;font-size:16px}
 .dlg-b{padding:18px 20px;display:flex;flex-direction:column;gap:14px}
@@ -176,26 +172,24 @@ dialog::backdrop{background:rgba(10,18,16,.55)}
 .fld{display:flex;flex-direction:column;gap:5px}
 .fld label{font:400 10.5px "JetBrains Mono";letter-spacing:.08em;text-transform:uppercase;color:var(--ink3)}
 .fld .help{font-size:11.5px;color:var(--ink3)}
-.rango{display:flex;gap:8px;align-items:center;font-size:12px;color:var(--ink2)}
+.rango{display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:12px;color:var(--ink2)}
 .rango button{border:1px solid var(--line2);background:var(--panel2);border-radius:5px;padding:3px 8px;cursor:pointer;font:600 11px "JetBrains Mono"}
 .rango button:hover{border-color:var(--acc);color:var(--acc)}
 
 .aviso{background:var(--warnbg);color:var(--warn);border-radius:6px;padding:10px 13px;font-size:12.5px;line-height:1.5}
 .aviso.bad{background:var(--badbg);color:var(--bad)}
 .aviso.ok{background:var(--okbg);color:var(--ok)}
-
-.empty{padding:44px 22px;text-align:center;color:var(--ink3);display:flex;flex-direction:column;gap:8px;align-items:center}
+.empty{padding:42px 22px;text-align:center;color:var(--ink3);display:flex;flex-direction:column;gap:8px;align-items:center}
 .empty b{font-family:"Bricolage Grotesque";font-size:15px;color:var(--ink2)}
-.empty p{max-width:44ch;font-size:13px;line-height:1.6}
-
-.spin{width:14px;height:14px;border:2px solid var(--line2);border-top-color:var(--acc);border-radius:50%;animation:sp .7s linear infinite;display:inline-block}
+.empty p{max-width:46ch;font-size:13px;line-height:1.6}
+.spin{width:14px;height:14px;border:2px solid var(--line2);border-top-color:var(--acc);border-radius:50%;
+  animation:sp .7s linear infinite;display:inline-block}
 @keyframes sp{to{transform:rotate(360deg)}}
 @media (prefers-reduced-motion:reduce){.spin{animation:none}}
-
 .toast{position:fixed;right:18px;bottom:18px;z-index:99;display:flex;flex-direction:column;gap:8px;max-width:360px}
-.toast>div{background:var(--panel);border:1px solid var(--line);border-left:3px solid var(--acc);border-radius:var(--r);padding:11px 14px;font-size:13px;box-shadow:var(--shadow)}
-.toast>div.bad{border-left-color:var(--bad)}
-.toast>div.ok{border-left-color:var(--ok)}
+.toast>div{background:var(--panel);border:1px solid var(--line);border-left:3px solid var(--acc);border-radius:var(--r);
+  padding:11px 14px;font-size:13px;box-shadow:var(--shadow)}
+.toast>div.bad{border-left-color:var(--bad)} .toast>div.ok{border-left-color:var(--ok)}
 .hide{display:none !important}
 </style>
 </head>
@@ -205,9 +199,10 @@ dialog::backdrop{background:rgba(10,18,16,.55)}
   <aside>
     <div class="brand"><b>CDP Kenta</b><span>Central de Promociones</span></div>
     <nav>
-      <button class="nav" data-v="tarjetas" aria-current="true">Tarjetas <span class="b" id="bT">0</span></button>
+      <button class="nav" data-v="sku" aria-current="true">Por SKU <span class="b" id="bS">0</span></button>
+      <button class="nav" data-v="sinpromo">Sin promo <span class="b" id="bH">0</span></button>
       <button class="nav" data-v="oportunidades">Oportunidades <span class="b" id="bO">0</span></button>
-      <button class="nav" data-v="publicaciones">Publicaciones <span class="b" id="bP">0</span></button>
+      <button class="nav" data-v="tarjetas">Campañas <span class="b" id="bT">0</span></button>
       <button class="nav" data-v="credibilidad">Credibilidad <span class="b" id="bC">0</span></button>
       <button class="nav" data-v="registro">Registro</button>
     </nav>
@@ -220,11 +215,9 @@ dialog::backdrop{background:rgba(10,18,16,.55)}
 
   <main>
     <div class="bar">
-      <h1 id="tit">Tarjetas</h1>
-      <input type="text" class="search" id="q" placeholder="Buscar por SKU, título o #ID">
+      <h1 id="tit">Por SKU</h1>
       <button class="btn" id="recargar">Recargar</button>
       <button class="btn p" id="sync">Sincronizar con Meli</button>
-      <div class="sub" id="sub"></div>
     </div>
     <div class="wrap" id="wrap"></div>
   </main>
@@ -232,50 +225,35 @@ dialog::backdrop{background:rgba(10,18,16,.55)}
 
 <div class="toast" id="toast"></div>
 
-<!-- ── configuración ── -->
 <dialog id="dCfg">
   <div class="dlg-h">Conexión</div>
   <div class="dlg-b">
-    <div class="fld">
-      <label>URL del Apps Script</label>
+    <div class="fld"><label>URL del Apps Script</label>
       <input type="text" id="cUrl" placeholder="https://script.google.com/macros/s/.../exec">
-      <span class="help">Implementar → Administrar implementaciones → copiá la URL de la app web.</span>
-    </div>
-    <div class="fld">
-      <label>Clave</label>
+      <span class="help">Implementar → Administrar implementaciones → URL de la app web.</span></div>
+    <div class="fld"><label>Clave</label>
       <input type="password" id="cKey" placeholder="la que pusiste en CLAVE_APP">
-      <span class="help">Queda guardada solo en este navegador.</span>
-    </div>
+      <span class="help">Queda guardada solo en este navegador.</span></div>
   </div>
-  <div class="dlg-f">
-    <button class="btn" id="cCancel">Cancelar</button>
-    <button class="btn p" id="cSave">Guardar</button>
-  </div>
+  <div class="dlg-f"><button class="btn" id="cCancel">Cancelar</button><button class="btn p" id="cSave">Guardar</button></div>
 </dialog>
 
-<!-- ── sumar a promoción ── -->
 <dialog id="dSumar">
   <div class="dlg-h" id="sTit">Sumar a promoción</div>
   <div class="dlg-b" id="sBody"></div>
-  <div class="dlg-f">
-    <button class="btn" id="sCancel">Cancelar</button>
-    <button class="btn p" id="sOk">Confirmar</button>
-  </div>
+  <div class="dlg-f"><button class="btn" id="sCancel">Cancelar</button><button class="btn p" id="sOk">Confirmar</button></div>
 </dialog>
 
 <script>
 "use strict";
 
-/* ══════════════════════════════════════════════════════════════
-   estado
-   ══════════════════════════════════════════════════════════════ */
 const S = {
   url: localStorage.getItem('cdp_url') || '',
   key: localStorage.getItem('cdp_key') || '',
-  data: null, filas: [], items: [], camps: [], reloj: {}, log: [],
-  vista: 'tarjetas', q: '', sel: new Set(), cargando: false
+  data:null, filas:[], items:[], skus:[], camps:[], reloj:{}, log:[], oport:[],
+  vista:'sku', q:'', skuSel: localStorage.getItem('cdp_sku') || '', campFiltro:null, sel:new Set()
 };
-const VENTANA = 7;                       // días de credibilidad (hipótesis Fabiana)
+const VENTANA = 7;
 const $  = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -283,515 +261,754 @@ const num = n => (n === '' || n == null || isNaN(n)) ? '—' :
   new Intl.NumberFormat('es-AR',{maximumFractionDigits:0}).format(Math.round(n));
 const pes = n => (n === '' || n == null || isNaN(n)) ? '—' : '$ ' + num(n);
 const pct = n => (n == null || isNaN(n)) ? '—' : n.toFixed(1).replace('.',',') + '%';
+const fecha = s => { if(!s) return '—'; const d = new Date(s);
+  return isNaN(d) ? '—' : d.toLocaleDateString('es-AR',{day:'2-digit',month:'short'}); };
 
-/* ══════════════════════════════════════════════════════════════
-   transporte — text/plain evita el preflight CORS de Apps Script
-   ══════════════════════════════════════════════════════════════ */
+/** "3x_campaign" → "3 cuotas" · vacío → "Contado" */
+const cuotasLabel = c => {
+  const t = String(c || '').trim();
+  if (!t) return 'Contado';
+  const m = t.match(/(\d+)/);
+  return m ? m[1] + ' cuotas' : t;
+};
+
 async function api(accion, extra) {
   if (!S.url || !S.key) { abrirCfg(); throw new Error('Falta configurar la conexión'); }
   const r = await fetch(S.url, {
-    method: 'POST', redirect: 'follow',
-    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-    body: JSON.stringify(Object.assign({ accion, clave: S.key }, extra || {}))
+    method:'POST', redirect:'follow',
+    headers:{ 'Content-Type':'text/plain;charset=utf-8' },
+    body: JSON.stringify(Object.assign({ accion, clave:S.key }, extra || {}))
   });
   const t = await r.text();
-  let j; try { j = JSON.parse(t); } catch (e) { throw new Error('Respuesta inesperada: ' + t.slice(0,140)); }
+  let j; try { j = JSON.parse(t); } catch(e) { throw new Error('Respuesta inesperada: ' + t.slice(0,140)); }
   if (!j.ok) throw new Error(j.error === 'clave_invalida' ? 'Clave incorrecta' : j.error);
   return j.data;
 }
-
 function toast(msg, tipo) {
   const d = document.createElement('div');
-  if (tipo) d.className = tipo;
-  d.textContent = msg;
+  if (tipo) d.className = tipo; d.textContent = msg;
   $('#toast').appendChild(d);
   setTimeout(() => d.remove(), tipo === 'bad' ? 9000 : 4500);
 }
 
-/* ══════════════════════════════════════════════════════════════
-   normalización
-   ══════════════════════════════════════════════════════════════ */
+/* ══ normalización ══ */
 const ACEPTAR_SOLO = ['MARKETPLACE_CAMPAIGN','SMART','PRICE_MATCHING','PRE_NEGOTIATED','VOLUME','UNHEALTHY_STOCK'];
-const DEFINE_PRECIO = ['DEAL','DOD','LIGHTNING','PRICE_DISCOUNT','SELLER_CAMPAIGN'];
 
 function procesar(d) {
-  S.data  = d;
-  S.camps = d.campanias || [];
-  S.reloj = d.reloj || {};
-  S.log   = d.log || [];
+  S.data = d; S.camps = d.campanias || []; S.reloj = d.reloj || {}; S.log = d.log || [];
+  const vence = {};
+  S.camps.forEach(c => { vence[c.promo_id] = c.vence_aceptacion; });
 
   S.filas = (d.datos || []).map(r => {
-    // original_price es el precio de lista real. precio_vidriera ya viene con
-    // el descuento aplicado si hay una promo corriendo, así que no sirve de base.
-    const lista = +r.original_price || +r.precio_vidriera || +r.precio_lista || 0;
-    const max   = r.max_disc  === '' ? null : +r.max_disc;
-    const min   = r.min_disc  === '' ? null : +r.min_disc;
-    const sug   = r.sugerido  === '' ? null : +r.sugerido;
-    const pp    = r.precio_promo === '' ? null : +r.precio_promo;
+    const lista = +r.original_price || +r.precio_vidriera || 0;
+    const max = r.max_disc === '' ? null : +r.max_disc;
+    const min = r.min_disc === '' ? null : +r.min_disc;
+    const sug = r.sugerido === '' ? null : +r.sugerido;
+    const pp  = r.precio_promo === '' ? null : +r.precio_promo;
     return {
-      // sku viene numérico desde Sheets; forzarlo a string o rompe el buscador
       id:String(r.item_id||''), sku:String(r.sku||''), titulo:String(r.titulo||''),
-      foto:r.foto, link:r.link,
-      lista, stock:+r.stock||0, listingType:r.listing_type, cuotas:r.cuotas,
+      foto:r.foto, link:r.link, lista, stock:+r.stock||0,
+      listingType:r.listing_type||'', cuotas:r.cuotas||'',
       envioGratis:r.envio_gratis==='SI', catalogo:r.catalogo==='SI',
-      tipo:r.promo_tipo, promoId:r.promo_id, promo:r.promo_nombre, status:r.status,
-      precio: pp && pp > 0 ? pp : null,
-      max, min, sug,
+      tipo:r.promo_tipo||'', promoId:String(r.promo_id||''), promo:r.promo_nombre||'', status:r.status||'',
+      precio: pp && pp > 0 ? pp : null, max, min, sug,
       meliPct: r['meli_%']==='' ? null : +r['meli_%'],
       sellerPct: r['seller_%']==='' ? null : +r['seller_%'],
-      boost: r.boost === 'SI',
-      inicio:r.inicio, fin:r.fin,
-      stockMin: r.stock_min === '' ? null : +r.stock_min,
-      stockMax: r.stock_max === '' ? null : +r.stock_max,
-      subType:r.sub_type, montoFijo:r.monto_fijo, pctFijo:r.pct_fijo,
+      boost:r.boost==='SI', precioBoost: r.precio_boost==='' ? null : +r.precio_boost,
+      inicio:r.inicio, fin:r.fin, vence: vence[String(r.promo_id||'')] || '',
+      stockMin: r.stock_min==='' ? null : +r.stock_min,
+      stockMax: r.stock_max==='' ? null : +r.stock_max,
+      subType:r.sub_type||'', montoFijo: r.monto_fijo==='' ? null : +r.monto_fijo,
+      pctFijo: r.pct_fijo==='' ? null : +r.pct_fijo,
       pisoPct: (max && lista) ? (1 - max/lista)*100 : null,
       techoPct:(min && lista) ? (1 - min/lista)*100 : null,
       sugPct:  (sug && lista) ? (1 - sug/lista)*100 : null,
+      promoPct:(pp && lista)  ? (1 - pp/lista)*100  : null,
       aceptaSolo: ACEPTAR_SOLO.includes(r.promo_tipo),
       esCupon: r.promo_tipo === 'SELLER_COUPON_CAMPAIGN'
     };
   });
 
-  // agrupar por publicación
+  // publicaciones
   const m = new Map();
   S.filas.forEach(f => {
     if (!m.has(f.id)) m.set(f.id, {
-      id:f.id, sku:f.sku, titulo:f.titulo, foto:f.foto, link:f.link, lista:f.lista,
-      stock:f.stock, listingType:f.listingType, cuotas:f.cuotas,
-      envioGratis:f.envioGratis, catalogo:f.catalogo, promos:[]
+      id:f.id, sku:f.sku, titulo:f.titulo, foto:f.foto, link:f.link, lista:f.lista, stock:f.stock,
+      listingType:f.listingType, cuotas:f.cuotas, envioGratis:f.envioGratis, catalogo:f.catalogo, promos:[]
     });
     m.get(f.id).promos.push(f);
   });
   S.items = [...m.values()].map(it => {
-    const act = it.promos.filter(p => p.status === 'started' && p.precio);
+    const act = it.promos.filter(p => (p.status==='started') && p.precio);
     it.activas = act;
+    // "dentro" incluye las programadas: ya están comprometidas aunque no hayan arrancado.
+    it.dentro = it.promos.filter(p => (p.status==='started' || p.status==='pending') && !p.esCupon);
     it.precioActivo = act.length ? Math.min(...act.map(p => p.precio)) : null;
     it.descActivo = it.precioActivo && it.lista ? (1 - it.precioActivo/it.lista)*100 : null;
-    it.candidatas = it.promos.filter(p => p.status === 'candidate' && !p.esCupon);
-    it.dias = (S.reloj[it.id] || {}).diasSinOferta ?? null;
-    it.muestras = (S.reloj[it.id] || {}).muestras ?? 0;
+    it.candidatas = it.promos.filter(p => p.status==='candidate' && !p.esCupon);
+    it.cupones = it.promos.filter(p => p.esCupon);
+    it.dias = (S.reloj[it.id]||{}).diasSinOferta ?? null;
+    it.muestras = (S.reloj[it.id]||{}).muestras ?? 0;
+    it.sinPromo = it.dentro.length === 0;
     return it;
-  }).sort((a,b) => (a.sku||'zz').localeCompare(b.sku||'zz'));
-
-  // oportunidades: candidatas con techo conocido y precio activo con el que comparar
-  S.oport = [];
-  S.items.forEach(it => {
-    it.candidatas.forEach(p => {
-      if (!p.max || !it.lista) return;
-      const ref = it.precioActivo;
-      const objetivo = p.sug || p.max;
-      S.oport.push({
-        it, p,
-        objetivo,
-        brechaSug: ref && p.sug ? p.sug - ref : null,
-        brechaTecho: ref ? p.max - ref : null
-      });
-    });
   });
+
+  // SKUs
+  const g = new Map();
+  S.items.forEach(it => {
+    const k = it.sku || ('s/sku · ' + it.titulo.slice(0,24));
+    if (!g.has(k)) g.set(k, []);
+    g.get(k).push(it);
+  });
+  S.skus = [...g.entries()].map(([sku, pubs]) => {
+    pubs.sort((a,b) => (a.lista||0) - (b.lista||0));
+    const campSet = new Map();
+    pubs.forEach(p => p.promos.forEach(x => {
+      if (x.esCupon) return;
+      const k = x.tipo + '|' + x.promoId;
+      if (!campSet.has(k)) campSet.set(k, {clave:k, tipo:x.tipo, promoId:x.promoId, nombre:x.promo, vence:x.vence});
+    }));
+    return {
+      sku, pubs,
+      titulo: pubs[0].titulo, foto: pubs[0].foto,
+      stock: Math.max(...pubs.map(p => p.stock || 0)),
+      campanias: [...campSet.values()].sort((a,b) => (a.tipo+a.nombre).localeCompare(b.tipo+b.nombre)),
+      nCand: pubs.reduce((a,p) => a + p.candidatas.length, 0),
+      nAct:  pubs.reduce((a,p) => a + p.activas.length, 0)
+    };
+  }).sort((a,b) => a.sku.localeCompare(b.sku, 'es', {numeric:true}));
+
+  // huérfanas: publicaciones sin ninguna promo activa ni programada
+  S.huerfanas = S.items.filter(it => it.sinPromo)
+    .sort((a,b) => (b.lista||0) - (a.lista||0));
+
+  // oportunidades
+  S.oport = [];
+  S.items.forEach(it => it.candidatas.forEach(p => {
+    if (!p.max || !it.lista) return;
+    const ref = it.precioActivo;
+    S.oport.push({ it, p,
+      brechaSug: ref && p.sug ? p.sug - ref : null,
+      brechaTecho: ref ? p.max - ref : null });
+  }));
   S.oport.sort((a,b) => (b.brechaSug ?? -1e12) - (a.brechaSug ?? -1e12));
 }
 
-/* ══════════════════════════════════════════════════════════════
-   filtro
-   ══════════════════════════════════════════════════════════════ */
-const coincide = it => {
-  if (!S.q) return true;
-  const q = S.q.toLowerCase();
-  return (it.sku||'').toLowerCase().includes(q)
-      || (it.titulo||'').toLowerCase().includes(q)
-      || (it.id||'').toLowerCase().includes(q);
-};
-
-/* ══════════════════════════════════════════════════════════════
-   vistas
-   ══════════════════════════════════════════════════════════════ */
+/* ══ router ══ */
 function render() {
-  const w = $('#wrap');
   if (!S.data) {
-    w.innerHTML = vacio('Sin datos todavía',
+    $('#wrap').innerHTML = vacio('Sin datos todavía',
       S.url ? 'Tocá <b>Sincronizar con Meli</b> para traer publicaciones y promociones.'
             : 'Primero configurá la URL del Apps Script y la clave.');
     return;
   }
-  $('#bT').textContent = S.camps.length;
+  $('#bS').textContent = S.skus.length;
+  $('#bH').textContent = S.huerfanas.length;
   $('#bO').textContent = S.oport.filter(o => (o.brechaSug ?? 0) > 0).length;
-  $('#bP').textContent = S.items.length;
+  $('#bT').textContent = S.camps.length;
   $('#bC').textContent = S.items.filter(i => i.dias != null && i.dias > 0 && i.dias < VENTANA).length;
-
-  ({tarjetas:vTarjetas, oportunidades:vOport, publicaciones:vPubs,
+  ({sku:vSku, sinpromo:vSinPromo, oportunidades:vOport, tarjetas:vCamp,
     credibilidad:vCred, registro:vLog})[S.vista]();
 }
-
 const vacio = (t,p) => `<div class="panel"><div class="empty"><b>${t}</b><p>${p}</p></div></div>`;
 
-/* ── 1 · TARJETAS ─────────────────────────────────────────── */
-function vTarjetas() {
-  $('#tit').textContent = 'Tarjetas';
-  $('#sub').innerHTML = 'Campañas abiertas y cuándo vence el plazo para sumarse.';
+/* ═══════════════════════════════════════════════════════════
+   VISTA 1 · POR SKU
+   ═══════════════════════════════════════════════════════════ */
+function vSku() {
+  $('#tit').textContent = 'Por SKU';
+  const g = S.skus.find(x => x.sku === S.skuSel);
 
-  const hoy = new Date();
-  const cards = S.camps.map(c => {
-    const items = S.filas.filter(f => f.promoId === c.promo_id);
-    const dentro = items.filter(f => f.status === 'started' || f.status === 'pending').length;
-    const cand   = items.filter(f => f.status === 'candidate').length;
-    const venc   = c.vence_aceptacion ? new Date(c.vence_aceptacion) : null;
-    const dias   = venc ? Math.ceil((venc - hoy)/864e5) : null;
-    const cls    = dias == null ? '' : dias <= 2 ? 'urg' : dias <= 6 ? 'pron' : 'calm';
-    return {c, dentro, cand, dias, cls, total: items.length};
-  }).sort((a,b) => (a.dias ?? 999) - (b.dias ?? 999));
+  const filtrados = S.q
+    ? S.skus.filter(x => (x.sku + ' ' + x.titulo).toLowerCase().includes(S.q.toLowerCase()))
+    : S.skus;
 
-  const html = cards.map(({c,dentro,cand,dias,cls}) => `
-    <div class="card ${cls}">
-      <span class="tipo">${esc(c.tipo)}</span>
-      <span class="nom">${esc(c.nombre || c.promo_id)}</span>
-      <div class="venc"><span>Vence para sumarse</span><b>${
-        dias == null ? '—' : dias < 0 ? 'vencido' : dias + ' día' + (dias===1?'':'s')}</b></div>
-      ${c.inicio ? `<div class="venc"><span>Vigencia</span><b>${fecha(c.inicio)} → ${fecha(c.fin)}</b></div>` : ''}
-      ${c['meli_%'] !== '' && c['meli_%'] != null ? `<div class="venc"><span>Co-fondeo</span><b>ML ${c['meli_%']}% / vos ${c['seller_%']}%</b></div>` : ''}
-      <div class="cnt">
-        <span class="chip ${dentro?'ok':'mut'}">${dentro} adentro</span>
-        <span class="chip ${cand?'acc':'mut'}">${cand} candidatos</span>
-        ${ACEPTAR_SOLO.includes(c.tipo) ? '<span class="chip mut">solo aceptar</span>' : '<span class="chip mut">definís precio</span>'}
-      </div>
-      ${cand ? `<button class="btn sm" data-camp="${esc(c.promo_id)}" style="margin-top:4px">Ver los ${cand} candidatos</button>` : ''}
-    </div>`).join('');
-
-  $('#wrap').innerHTML = `<div class="cards">${html || vacio('Sin campañas','No hay campañas abiertas en este momento.')}</div>`;
-  $$('[data-camp]').forEach(b => b.onclick = () => {
-    S.q = ''; $('#q').value = ''; S.campFiltro = b.dataset.camp; ir('oportunidades');
-  });
-}
-const fecha = s => { if(!s) return '—'; const d=new Date(s); return isNaN(d)?'—':
-  d.toLocaleDateString('es-AR',{day:'2-digit',month:'short'}); };
-
-/* ── 2 · OPORTUNIDADES ────────────────────────────────────── */
-function vOport() {
-  $('#tit').textContent = 'Oportunidades';
-  $('#sub').innerHTML = 'Qué precio te <b>exige</b> Meli, qué te <b>sugiere</b>, y a cuánto estás vendiendo hoy. La brecha es por unidad.';
-
-  let lista = S.oport.filter(o => coincide(o.it));
-  if (S.campFiltro) lista = lista.filter(o => o.p.promoId === S.campFiltro);
-
-  const conBrecha = lista.filter(o => (o.brechaSug ?? 0) > 0);
-  const total = conBrecha.reduce((a,o) => a + o.brechaSug, 0);
-
-  const kpis = `<div class="kpis">
-    <div class="kpi"><span class="k">Candidaturas abiertas</span><span class="v">${lista.length}</span><span class="d">ítem × campaña</span></div>
-    <div class="kpi hot"><span class="k">Con brecha</span><span class="v">${conBrecha.length}</span><span class="d">estás por debajo de lo sugerido</span></div>
-    <div class="kpi hot"><span class="k">Brecha total</span><span class="v">${num(total)}</span><span class="d">pesos por unidad, sumados</span></div>
-  </div>`;
-
-  const filtro = S.campFiltro
-    ? `<div class="aviso">Filtrando por una campaña. <a href="#" id="limpiarCamp">Ver todas</a></div>` : '';
-
-  const filas = lista.map((o,i) => {
-    const {it,p} = o;
-    const st = semaforo(o);
-    return `<tr>
-      <td><input type="checkbox" class="chk" data-i="${i}" ${o.brechaSug>0?'':''}></td>
-      <td><div class="tit">${it.foto?`<img src="${esc(it.foto)}" alt="" loading="lazy">`:''}
-        <span><b>${esc(it.titulo.slice(0,52))}</b><small>${esc(it.sku||it.id)}</small></span></div></td>
-      <td><span class="chip mut">${esc(p.tipo)}</span><br><small style="color:var(--ink3)">${esc((p.promo||'').slice(0,24))}</small></td>
-      <td class="r n">${pes(it.lista)}</td>
-      <td class="r n">${pes(it.precioActivo)}<br><small style="color:var(--ink3)">${it.descActivo?('−'+pct(it.descActivo)):''}</small></td>
-      <td class="r n">${pes(p.max)}<br><small style="color:var(--ink3)">mín −${pct(p.pisoPct)}</small></td>
-      <td class="r n">${pes(p.sug)}<br><small style="color:var(--ink3)">${p.sugPct?('−'+pct(p.sugPct)):''}</small></td>
-      <td class="r n" style="color:${o.brechaSug>0?'var(--bad)':'var(--ink3)'};font-weight:600">
-        ${o.brechaSug!=null?(o.brechaSug>0?'+':'')+num(o.brechaSug):'—'}</td>
-      <td><span class="chip ${st.c}">${st.t}</span></td>
-      <td class="r"><button class="btn sm" data-sumar="${i}">Sumar</button></td>
-    </tr>`;
-  }).join('');
-
-  $('#wrap').innerHTML = kpis + filtro + `
-    <div class="panel"><h2>Candidaturas abiertas
-      <span class="hint">Ordenadas por brecha descendente</span></h2>
-      <div class="scroll"><table>
-        <thead><tr>
-          <th style="width:28px"></th><th>Publicación</th><th>Campaña</th>
-          <th class="r">Lista</th><th class="r">Hoy</th><th class="r">Techo (exigido)</th>
-          <th class="r">Sugerido</th><th class="r">Brecha/u</th><th>Estado</th><th></th>
-        </tr></thead>
-        <tbody>${filas || '<tr><td colspan="10"><div class="empty"><b>Nada por acá</b><p>No hay candidaturas abiertas con ese filtro.</p></div></td></tr>'}</tbody>
-      </table></div>
+  const buscador = `
+    <div class="buscador">
+      <input type="text" id="qsku" placeholder="Escribí un SKU (ej. 20608)" value="${esc(S.q)}" autocomplete="off">
+      ${g ? `<button class="btn sm" id="limpiarSku">Ver todos los SKU</button>` : ''}
+      <span style="color:var(--ink3);font-size:12px">${filtrados.length} de ${S.skus.length}</span>
     </div>
-    <div class="lote hide" id="lote">
-      <b id="loteN">0</b> seleccionadas
-      <button class="btn sm" id="loteSug">Sumar todas al precio sugerido</button>
-      <button class="btn sm" id="loteMax">Sumar todas al techo</button>
-      <button class="btn sm" id="loteNo">Limpiar</button>
-    </div>`;
+    ${!g ? `<div class="sugs">${filtrados.slice(0,60).map(x =>
+      `<button class="sug" data-sku="${esc(x.sku)}">${esc(x.sku)}<small>${x.pubs.length} pub · ${x.nCand} disp.</small></button>`
+    ).join('')}${filtrados.length>60?'<span style="color:var(--ink3);font-size:12px;align-self:center">…seguí escribiendo</span>':''}</div>` : ''}`;
 
-  if ($('#limpiarCamp')) $('#limpiarCamp').onclick = e => { e.preventDefault(); S.campFiltro=null; render(); };
-  $$('[data-sumar]').forEach(b => b.onclick = () => abrirSumar(lista[+b.dataset.sumar]));
-  $$('.chk').forEach(c => c.onchange = () => {
-    c.checked ? S.sel.add(+c.dataset.i) : S.sel.delete(+c.dataset.i);
-    $('#lote').classList.toggle('hide', !S.sel.size);
-    $('#loteN').textContent = S.sel.size;
-  });
-  if ($('#loteNo')) $('#loteNo').onclick = () => { S.sel.clear(); render(); };
-  if ($('#loteSug')) $('#loteSug').onclick = () => lote(lista, 'sug');
-  if ($('#loteMax')) $('#loteMax').onclick = () => lote(lista, 'max');
+  if (!g) {
+    $('#wrap').innerHTML = buscador + vacio('Elegí un SKU',
+      'Escribí el código o tocá uno de los chips. Vas a ver todas sus publicaciones — contado, 3 cuotas, 6 cuotas — y todas las campañas a las que podés sumarlas.');
+    engancharBuscador();
+    return;
+  }
+
+  $('#wrap').innerHTML = buscador
+    + heroSku(g)
+    + matrizSku(g)
+    + g.pubs.map(p => bloquePub(p, g)).join('')
+    + cuponesSku(g);
+
+  engancharBuscador();
+  engancharAcciones();
 }
 
-function semaforo(o) {
-  const {p} = o;
-  if (o.brechaSug == null) return {c:'mut', t:'sin referencia'};
-  if (o.brechaSug > 0)     return {c:'bad', t:'estás regalando'};
-  if (o.brechaTecho > 0)   return {c:'warn',t:'hay margen al techo'};
-  return {c:'ok', t:'bien calibrado'};
+function heroSku(g) {
+  const listas = g.pubs.map(p => p.lista).filter(Boolean);
+  return `<div class="hero">
+    ${g.foto ? `<img src="${esc(g.foto)}" alt="" loading="lazy">` : ''}
+    <div class="txt">
+      <span class="sk">SKU ${esc(g.sku)}</span>
+      <h2>${esc(g.titulo)}</h2>
+      <div class="stats">
+        <div><span>Publicaciones</span><b>${g.pubs.length}</b></div>
+        <div><span>Rango de lista</span><b>${listas.length ? pes(Math.min(...listas)) + ' – ' + pes(Math.max(...listas)) : '—'}</b></div>
+        <div><span>Stock</span><b>${num(g.stock)}</b></div>
+        <div><span>Campañas</span><b>${g.campanias.length}</b></div>
+        <div><span>Adentro</span><b style="color:var(--ok)">${g.nAct}</b></div>
+        <div><span>Disponibles</span><b style="color:var(--acc)">${g.nCand}</b></div>
+      </div>
+    </div>
+  </div>`;
 }
 
-/* ── 3 · PUBLICACIONES ────────────────────────────────────── */
-function vPubs() {
-  $('#tit').textContent = 'Publicaciones';
-  $('#sub').innerHTML = 'Producto, condiciones de venta y en qué promociones está metido.';
+/** Matriz publicaciones × campañas: el panorama de un vistazo. */
+function matrizSku(g) {
+  if (!g.campanias.length) return '';
+  const cols = g.campanias;
+  const cab = cols.map(c => {
+    const d = diasPara(c.vence);
+    return `<th class="c">${esc((c.nombre || c.tipo).slice(0,20))}
+      <div style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--ink3);margin-top:3px">
+        ${esc(c.tipo.toLowerCase())}${d!=null ? ` · ${d<0?'vencida':d+'d'}` : ''}</div></th>`;
+  }).join('');
 
-  const lista = S.items.filter(coincide);
-  const filas = lista.map(it => {
-    const dentro = it.activas.map(p =>
-      `<span class="chip ok" title="${esc(p.promo||'')}">${esc(p.tipo)}</span>`).join(' ');
-    const cand = it.candidatas.length
-      ? `<span class="chip acc">${it.candidatas.length} disponibles</span>` : '';
-    const cond = [
-      it.listingType ? `<span class="chip mut">${esc(it.listingType)}</span>` : '',
-      it.cuotas ? `<span class="chip mut">cuotas</span>` : `<span class="chip mut">sin cuotas</span>`,
-      it.envioGratis ? `<span class="chip mut">envío gratis</span>` : '',
-      it.catalogo ? `<span class="chip mut">catálogo</span>` : ''
-    ].filter(Boolean).join(' ');
+  const filas = g.pubs.map(p => {
+    const celdas = cols.map(c => {
+      const x = p.promos.find(y => y.tipo === c.tipo && y.promoId === c.promoId);
+      if (!x) return `<td class="c" style="color:var(--ink3)">—</td>`;
+      const est = x.status === 'started' ? 'ok' : x.status === 'pending' ? 'warn' : 'acc';
+      const txt = x.status === 'started' ? 'adentro' : x.status === 'pending' ? 'programada' : 'disponible';
+      const precio = x.precio || x.sug || x.max;
+      return `<td class="c"><div class="celda">
+        <span class="chip ${est}">${txt}</span>
+        ${precio ? `<span class="pz">${pes(precio)}</span>` : ''}
+        ${x.promoPct != null ? `<span style="color:var(--ink3)">−${pct(x.promoPct)}</span>`
+          : x.pisoPct != null ? `<span style="color:var(--ink3)">mín −${pct(x.pisoPct)}</span>` : ''}
+      </div></td>`;
+    }).join('');
+    return `<tr><td><b style="font-size:12.5px">${esc(cuotasLabel(p.cuotas))}</b>
+      <div style="font:400 10px 'JetBrains Mono';color:var(--ink3)">${esc(p.listingType)} · ${pes(p.lista)}</div></td>${celdas}</tr>`;
+  }).join('');
+
+  return `<div class="panel"><h3>Panorama
+    <span class="hint">Publicaciones en filas, campañas en columnas</span></h3>
+    <div class="scroll"><table class="matriz">
+      <thead><tr><th>Publicación</th>${cab}</tr></thead>
+      <tbody>${filas}</tbody></table></div></div>`;
+}
+
+const diasPara = s => { if (!s) return null; const d = new Date(s);
+  return isNaN(d) ? null : Math.ceil((d - new Date())/864e5); };
+
+/** Un bloque por publicación con TODAS sus promos y todos los campos. */
+function bloquePub(p, g) {
+  const conds = [
+    `<span class="chip mut">${esc(p.listingType)}</span>`,
+    `<span class="chip ${p.cuotas?'acc':'mut'}">${esc(cuotasLabel(p.cuotas))}</span>`,
+    p.envioGratis ? '<span class="chip mut">envío gratis</span>' : '<span class="chip mut">envío comprador</span>',
+    p.catalogo ? '<span class="chip mut">catálogo</span>' : ''
+  ].filter(Boolean).join('');
+
+  const rel = p.muestras > 0 ? (() => {
+    const ok = p.dias >= VENTANA;
+    const w = Math.min(100, Math.round((p.dias/VENTANA)*100));
+    return `<div class="reloj" title="Días consecutivos sin oferta activa">
+      <div class="prog ${ok?'done':''}"><i style="width:${w}%"></i></div>
+      <span>${p.dias}/${VENTANA} d ${ok?'· podés subir precio':''}</span></div>`;
+  })() : `<span style="font-size:11.5px;color:var(--ink3)">reloj: sin histórico aún</span>`;
+
+  const promos = p.promos.filter(x => !x.esCupon)
+    .sort((a,b) => (a.status==='started'?0:a.status==='pending'?1:2) - (b.status==='started'?0:b.status==='pending'?1:2));
+
+  const filas = promos.map(x => {
+    const est = x.status==='started' ? ['ok','adentro'] : x.status==='pending' ? ['warn','programada'] : ['acc','disponible'];
+    const d = diasPara(x.vence);
+    const accion = x.status === 'candidate'
+      ? `<button class="btn xs" data-add="${esc(p.id)}|${esc(x.tipo)}|${esc(x.promoId)}">Sumar</button>`
+      : `<button class="btn xs danger" data-del="${esc(p.id)}|${esc(x.tipo)}|${esc(x.promoId)}">Salir</button>`;
     return `<tr>
-      <td><div class="tit">${it.foto?`<img src="${esc(it.foto)}" alt="" loading="lazy">`:''}
-        <span><b>${esc(it.titulo.slice(0,54))}</b>
-        <small>${esc(it.sku||'')} · ${esc(it.id)}${it.link?` · <a href="${esc(it.link)}" target="_blank" rel="noopener">ver</a>`:''}</small></span></div></td>
-      <td>${cond}</td>
-      <td class="r n">${pes(it.lista)}</td>
-      <td class="r n">${num(it.stock)}</td>
-      <td class="r n">${it.precioActivo?pes(it.precioActivo):'—'}${it.descActivo?`<br><small style="color:var(--ink3)">−${pct(it.descActivo)}</small>`:''}</td>
-      <td>${dentro || '<span class="chip mut">sin ofertas</span>'} ${cand}</td>
-      <td class="r"><button class="btn sm" data-det="${esc(it.id)}">Detalle</button></td>
+      <td><span class="chip ${est[0]}">${est[1]}</span></td>
+      <td><b style="font-size:12px">${esc(x.promo || x.tipo)}</b>
+        <div style="font:400 10px 'JetBrains Mono';color:var(--ink3)">${esc(x.tipo)}${x.aceptaSolo?' · solo aceptar':' · definís precio'}</div></td>
+      <td class="r n">${x.precio?pes(x.precio):'—'}<div style="font-size:10.5px;color:var(--ink3)">${x.promoPct!=null?'−'+pct(x.promoPct):''}</div></td>
+      <td class="r n">${x.max?pes(x.max):'—'}<div style="font-size:10.5px;color:var(--ink3)">${x.pisoPct!=null?'−'+pct(x.pisoPct):''}</div></td>
+      <td class="r n">${x.sug?pes(x.sug):'—'}<div style="font-size:10.5px;color:var(--ink3)">${x.sugPct!=null?'−'+pct(x.sugPct):''}</div></td>
+      <td class="r n">${x.min?pes(x.min):'—'}<div style="font-size:10.5px;color:var(--ink3)">${x.techoPct!=null?'−'+pct(x.techoPct):''}</div></td>
+      <td class="c">${x.meliPct!=null?`<span class="chip ok">ML ${x.meliPct}%</span><div style="font-size:10.5px;color:var(--ink3);margin-top:2px">vos ${x.sellerPct}%</div>`:'<span style="color:var(--ink3)">—</span>'}</td>
+      <td style="font-size:11px;color:var(--ink2);white-space:nowrap">
+        ${x.inicio?fecha(x.inicio)+' → '+fecha(x.fin):'—'}
+        ${d!=null?`<div style="color:${d<3?'var(--bad)':'var(--ink3)'}">${d<0?'vencida':'quedan '+d+'d'}</div>`:''}</td>
+      <td>${x.boost?'<span class="chip warn">boost</span>':''}
+        ${x.stockMin!=null?`<span class="chip mut">stock ${x.stockMin}-${x.stockMax}</span>`:''}</td>
+      <td class="r">${accion}</td>
     </tr>`;
   }).join('');
 
-  $('#wrap').innerHTML = `
-    <div class="panel"><h2>${lista.length} publicaciones activas
-      <span class="hint">Buscá por SKU, título o #ID</span></h2>
-      <div class="scroll"><table>
-        <thead><tr><th>Producto</th><th>Condiciones de venta</th><th class="r">Lista</th>
-        <th class="r">Stock</th><th class="r">Vendiendo a</th><th>Promociones</th><th></th></tr></thead>
-        <tbody>${filas || '<tr><td colspan="7"><div class="empty"><b>Sin resultados</b><p>Probá otra búsqueda.</p></div></td></tr>'}</tbody>
-      </table></div></div>`;
-
-  $$('[data-det]').forEach(b => b.onclick = () => detalle(b.dataset.det));
+  return `<div class="pub">
+    <div class="pub-h">
+      <span class="cuota">${esc(cuotasLabel(p.cuotas))}</span>
+      ${p.sinPromo ? '<span class="chip bad">sin promo</span>' : ''}
+      <span class="id">${esc(p.id)}</span>
+      ${p.link?`<a href="${esc(p.link)}" target="_blank" rel="noopener" style="font-size:11.5px">ver en Meli ↗</a>`:''}
+      <div class="conds">${conds}</div>
+      <div class="sep">
+        <span>Lista <b>${pes(p.lista)}</b></span>
+        <span>Stock <b>${num(p.stock)}</b></span>
+        <span>Vendiendo a <b>${p.precioActivo?pes(p.precioActivo):'—'}</b>${p.descActivo?` <small style="color:var(--ink3)">−${pct(p.descActivo)}</small>`:''}</span>
+        ${rel}
+      </div>
+    </div>
+    <div class="scroll"><table>
+      <thead><tr>
+        <th>Estado</th><th>Campaña</th><th class="r">Precio</th>
+        <th class="r">Techo<br>máx. permitido</th><th class="r">Sugerido<br>por Meli</th><th class="r">Piso<br>mín. permitido</th>
+        <th class="c">Co-fondeo</th><th>Vigencia</th><th></th><th></th>
+      </tr></thead>
+      <tbody>${filas || '<tr><td colspan="10" style="color:var(--ink3);padding:16px">Sin promociones para esta publicación.</td></tr>'}</tbody>
+    </table></div>
+    ${!p.candidatas.length ? `<div style="padding:11px 16px;border-top:1px solid var(--line);
+        display:flex;gap:12px;align-items:center;flex-wrap:wrap;font-size:12px;color:var(--ink2)">
+      <span>Ninguna campaña invitó a esta publicación.</span>
+      <button class="btn xs p" data-man="${esc(p.id)}">Crear descuento individual</button>
+    </div>` : ''}
+  </div>`;
 }
 
-function detalle(id) {
-  const it = S.items.find(x => x.id === id);
-  if (!it) return;
-  const filas = it.promos.map(p => `
-    <tr>
-      <td><span class="chip ${p.status==='started'?'ok':p.status==='pending'?'warn':'mut'}">${esc(p.status)}</span></td>
-      <td><b>${esc(p.tipo)}</b><br><small style="color:var(--ink3)">${esc(p.promo||'')}</small></td>
-      <td class="r n">${p.precio?pes(p.precio):'—'}</td>
-      <td class="r n">${p.max?pes(p.max):'—'}</td>
-      <td class="r n">${p.sug?pes(p.sug):'—'}</td>
-      <td class="r">${p.status==='candidate' && !p.esCupon
-        ? `<button class="btn sm" data-add="${esc(p.tipo)}|${esc(p.promoId||'')}">Sumar</button>`
-        : (p.status==='started'||p.status==='pending')
-        ? `<button class="btn sm danger" data-del="${esc(p.tipo)}|${esc(p.promoId||'')}">Salir</button>` : ''}</td>
-    </tr>`).join('');
-
-  $('#sTit').textContent = it.titulo.slice(0,60);
-  $('#sBody').innerHTML = `
-    <div class="rango"><span>Lista <b class="n">${pes(it.lista)}</b></span>
-      <span>Stock <b class="n">${num(it.stock)}</b></span>
-      <span>${esc(it.listingType||'')}</span></div>
+function cuponesSku(g) {
+  const cup = g.pubs[0] ? g.pubs[0].cupones : [];
+  if (!cup.length) return '';
+  return `<div class="panel"><h3>Cupones del vendedor
+    <span class="hint">Aplican a nivel cuenta, no por publicación</span></h3>
     <div class="scroll"><table>
-      <thead><tr><th>Estado</th><th>Promoción</th><th class="r">Precio</th><th class="r">Techo</th><th class="r">Sugerido</th><th></th></tr></thead>
-      <tbody>${filas}</tbody></table></div>`;
-  $('#sOk').classList.add('hide');
-  const dlg = $('#dSumar'); dlg.showModal();
+      <thead><tr><th>Cupón</th><th>Tipo</th><th class="r">Beneficio</th><th>Vigencia</th><th>Estado</th></tr></thead>
+      <tbody>${cup.map(c => `<tr>
+        <td><b style="font-size:12px">${esc(c.promo)}</b></td>
+        <td><span class="chip mut">${esc(c.subType)}</span></td>
+        <td class="r n">${c.montoFijo!=null?pes(c.montoFijo):c.pctFijo!=null?c.pctFijo+'%':'—'}</td>
+        <td style="font-size:11.5px">${fecha(c.inicio)} → ${fecha(c.fin)}</td>
+        <td><span class="chip ${c.status==='started'?'ok':'acc'}">${esc(c.status)}</span></td>
+      </tr>`).join('')}</tbody></table></div></div>`;
+}
 
-  dlg.querySelectorAll('[data-add]').forEach(b => b.onclick = () => {
-    const [tipo,pid] = b.dataset.add.split('|');
-    const o = S.oport.find(x => x.it.id===id && x.p.tipo===tipo && (x.p.promoId||'')===pid);
-    dlg.close(); if (o) abrirSumar(o); else toast('No hay datos de precio para esa promoción','bad');
+function engancharBuscador() {
+  const i = $('#qsku');
+  if (i) {
+    let t;
+    i.oninput = e => { clearTimeout(t); t = setTimeout(() => {
+      S.q = e.target.value.trim();
+      const exacto = S.skus.find(x => x.sku.toLowerCase() === S.q.toLowerCase());
+      if (exacto) { S.skuSel = exacto.sku; localStorage.setItem('cdp_sku', exacto.sku); }
+      else if (S.skuSel && !S.q) { }
+      render();
+      const j = $('#qsku'); if (j) { j.focus(); j.setSelectionRange(j.value.length, j.value.length); }
+    }, 200); };
+  }
+  $$('[data-sku]').forEach(b => b.onclick = () => {
+    S.skuSel = b.dataset.sku; S.q = ''; localStorage.setItem('cdp_sku', S.skuSel); render();
   });
-  dlg.querySelectorAll('[data-del]').forEach(b => b.onclick = async () => {
-    const [tipo,pid] = b.dataset.del.split('|');
-    if (!confirm('¿Sacar esta publicación de ' + tipo + '?\n\nOjo: si después subís el precio, el reloj de credibilidad arranca recién ahora.')) return;
-    dlg.close();
+  if ($('#limpiarSku')) $('#limpiarSku').onclick = () => {
+    S.skuSel = ''; S.q = ''; localStorage.removeItem('cdp_sku'); render();
+  };
+}
+
+function engancharAcciones() {
+  $$('[data-man]').forEach(b => b.onclick = () => {
+    const it = S.items.find(x => x.id === b.dataset.man);
+    if (it) abrirManual(it);
+  });
+  $$('[data-add]').forEach(b => b.onclick = () => {
+    const [id,tipo,pid] = b.dataset.add.split('|');
+    const it = S.items.find(x => x.id === id);
+    const p  = it && it.promos.find(x => x.tipo===tipo && x.promoId===pid);
+    if (p) abrirSumar({it, p}); else toast('No encontré esa promoción','bad');
+  });
+  $$('[data-del]').forEach(b => b.onclick = async () => {
+    const [id,tipo,pid] = b.dataset.del.split('|');
+    if (!confirm('¿Sacar esta publicación de ' + tipo + '?\n\nOjo: el reloj de credibilidad de 7 días arranca recién ahora.')) return;
     try { await api('salir',{item_id:id, promotion_type:tipo, promotion_id:pid||undefined});
       toast('Salió de ' + tipo,'ok'); cargar(); }
     catch(e){ toast(e.message,'bad'); }
   });
 }
 
-/* ── 4 · CREDIBILIDAD ─────────────────────────────────────── */
-function vCred() {
-  $('#tit').textContent = 'Credibilidad';
-  $('#sub').innerHTML = `Meli compara contra tu precio de <b>venta con oferta</b> de los últimos ~${VENTANA} días. El reloj arranca cuando sacás las ofertas, no cuando cambiás el precio.`;
+/* ═══════════════════════════════════════════════════════════
+   VISTA 2 · SIN PROMO — publicaciones que quedaron afuera
+   ═══════════════════════════════════════════════════════════ */
+function vSinPromo() {
+  $('#tit').textContent = 'Sin promo';
 
-  const conHist = S.items.filter(i => i.muestras > 0);
-  const listos  = conHist.filter(i => i.dias >= VENTANA);
-  const corriendo = conHist.filter(i => i.dias > 0 && i.dias < VENTANA);
+  const conCand = S.huerfanas.filter(it => it.candidatas.length);
+  const sinCand = S.huerfanas.filter(it => !it.candidatas.length);
+  const plata = conCand.reduce((a,it) => {
+    const mejor = mejorCandidata(it);
+    return a + (mejor && mejor.sug ? mejor.sug : 0);
+  }, 0);
 
-  if (!conHist.length) {
-    $('#wrap').innerHTML = `
-      <div class="aviso">El reloj se calcula con el histórico diario. Todavía no hay suficientes días guardados.</div>
-      ${vacio('El histórico recién arranca',
-        'Cada sincronización guarda una foto del día. Con la sync automática de las 07:00 vas a tener el reloj completo en una semana. Mientras tanto, el resto de la app funciona igual.')}`;
+  if (!S.huerfanas.length) {
+    $('#wrap').innerHTML = vacio('Todo cubierto',
+      'Las ' + S.items.length + ' publicaciones activas tienen al menos una promoción corriendo o programada.');
     return;
   }
 
-  const grupos = agruparEspejos();
+  const fila = (it, modo) => {
+    const mejor = modo === 'cand' ? mejorCandidata(it) : null;
+    const rel = it.muestras > 0
+      ? `<span class="chip ${it.dias>=VENTANA?'ok':'mut'}">${it.dias}/${VENTANA} d sin oferta</span>`
+      : `<span style="color:var(--ink3);font-size:11px">sin histórico</span>`;
+    return `<tr>
+      <td class="n"><b>${esc(it.sku || '—')}</b></td>
+      <td><span class="chip ${it.cuotas?'acc':'mut'}">${esc(cuotasLabel(it.cuotas))}</span></td>
+      <td><b style="font-size:12px">${esc(it.titulo.slice(0,44))}</b>
+        <div style="font:400 10px 'JetBrains Mono';color:var(--ink3)">${esc(it.id)} · ${esc(it.listingType)}</div></td>
+      <td class="r n">${pes(it.lista)}</td>
+      <td class="r n">${num(it.stock)}</td>
+      <td>${rel}</td>
+      ${modo === 'cand'
+        ? `<td>${it.candidatas.length} disponible${it.candidatas.length===1?'':'s'}
+             <div style="font-size:10.5px;color:var(--ink3)">${esc((mejor && (mejor.promo||mejor.tipo))||'')}</div></td>
+           <td class="r n">${mejor && mejor.sug ? pes(mejor.sug) : mejor && mejor.max ? pes(mejor.max) : '—'}</td>
+           <td class="r"><button class="btn xs" data-sp="${esc(it.id)}|${esc(mejor?mejor.tipo:'')}|${esc(mejor?mejor.promoId:'')}">Sumar</button>
+             <button class="btn xs" data-goto="${esc(it.sku)}">SKU</button></td>`
+        : `<td colspan="2" style="font-size:11.5px;color:var(--ink3)">Ninguna campaña la invitó</td>
+           <td class="r"><button class="btn xs p" data-man="${esc(it.id)}">Crear descuento</button>
+             <button class="btn xs" data-goto="${esc(it.sku)}">SKU</button></td>`}
+    </tr>`;
+  };
 
-  const filas = conHist
-    .filter(coincide)
-    .sort((a,b) => (b.dias??0)-(a.dias??0))
-    .map(it => {
-      const p = Math.min(100, Math.round((it.dias/VENTANA)*100));
-      const ok = it.dias >= VENTANA;
-      return `<tr>
-        <td><div class="tit">${it.foto?`<img src="${esc(it.foto)}" alt="" loading="lazy">`:''}
-          <span><b>${esc(it.titulo.slice(0,48))}</b><small>${esc(it.sku||it.id)}</small></span></div></td>
-        <td>${it.activas.length
-          ? '<span class="chip ok">con oferta</span>'
-          : '<span class="chip mut">sin oferta</span>'}</td>
-        <td class="r n">${it.dias}</td>
-        <td style="min-width:110px"><div class="prog ${ok?'done':''}"><i style="width:${p}%"></i></div></td>
-        <td><span class="chip ${ok?'ok':'warn'}">${ok?'podés subir precio':'faltan '+(VENTANA-it.dias)+'d'}</span></td>
-      </tr>`;
-    }).join('');
+  const cab = extra => `<thead><tr><th>SKU</th><th>Opción</th><th>Publicación</th>
+    <th class="r">Lista</th><th class="r">Stock</th><th>Credibilidad</th>${extra}</tr></thead>`;
+
+  $('#wrap').innerHTML = `
+    <div class="kpis">
+      <div class="kpi hot"><span class="k">Sin promo</span><span class="v">${S.huerfanas.length}</span><span class="d">de ${S.items.length} publicaciones</span></div>
+      <div class="kpi"><span class="k">Con campaña disponible</span><span class="v">${conCand.length}</span><span class="d">un click y entran</span></div>
+      <div class="kpi"><span class="k">Sin invitación</span><span class="v">${sinCand.length}</span><span class="d">van por descuento individual</span></div>
+      <div class="kpi"><span class="k">SKU afectados</span><span class="v">${new Set(S.huerfanas.map(i=>i.sku)).size}</span><span class="d">productos distintos</span></div>
+    </div>
+
+    ${conCand.length ? `<div class="panel"><h3>Tienen campaña disponible y no están adentro
+      <span class="hint">${conCand.length} publicaciones · se suman directo</span></h3>
+      <div class="scroll"><table>
+        ${cab('<th>Campañas</th><th class="r">Precio sugerido</th><th></th>')}
+        <tbody>${conCand.map(it => fila(it,'cand')).join('')}</tbody>
+      </table></div></div>` : ''}
+
+    ${sinCand.length ? `<div class="panel"><h3>Sin ninguna campaña disponible
+      <span class="hint">${sinCand.length} publicaciones · descuento individual</span></h3>
+      <div class="scroll"><table>
+        ${cab('<th colspan="2">Situación</th><th></th>')}
+        <tbody>${sinCand.map(it => fila(it,'manual')).join('')}</tbody>
+      </table></div>
+      <div style="padding:12px 16px;border-top:1px solid var(--line);font-size:12px;color:var(--ink2)">
+        El descuento individual (<code>PRICE_DISCOUNT</code>) no necesita invitación: lo creás vos.
+        Requiere reputación verde, descuento entre 5% y 80%, y dura máximo 14 días.
+      </div></div>` : ''}`;
+
+  $$('[data-sp]').forEach(b => b.onclick = () => {
+    const [id,tipo,pid] = b.dataset.sp.split('|');
+    const it = S.items.find(x => x.id === id);
+    const p = it && it.promos.find(x => x.tipo===tipo && x.promoId===pid);
+    if (p) abrirSumar({it,p}); else toast('No encontré esa promoción','bad');
+  });
+  $$('[data-man]').forEach(b => b.onclick = () => {
+    const it = S.items.find(x => x.id === b.dataset.man);
+    if (it) abrirManual(it);
+  });
+  $$('[data-goto]').forEach(b => b.onclick = () => {
+    S.skuSel = b.dataset.goto; S.q=''; localStorage.setItem('cdp_sku',S.skuSel); ir('sku');
+  });
+}
+
+/** La candidata que deja el mejor precio: el techo más alto. */
+function mejorCandidata(it) {
+  const c = it.candidatas.filter(p => p.max || p.sug || p.precio);
+  if (!c.length) return it.candidatas[0] || null;
+  return c.slice().sort((a,b) => (b.max||b.sug||b.precio||0) - (a.max||a.sug||a.precio||0))[0];
+}
+
+/* ═══ VISTA 3 · OPORTUNIDADES ═══ */
+function vOport() {
+  $('#tit').textContent = 'Oportunidades';
+  let lista = S.oport;
+  if (S.campFiltro) lista = lista.filter(o => o.p.promoId === S.campFiltro);
+  const conB = lista.filter(o => (o.brechaSug ?? 0) > 0);
+  const total = conB.reduce((a,o) => a + o.brechaSug, 0);
+
+  const filas = lista.map((o,i) => {
+    const {it,p} = o;
+    const st = o.brechaSug == null ? ['mut','sin referencia']
+             : o.brechaSug > 0     ? ['bad','estás regalando']
+             : o.brechaTecho > 0   ? ['warn','margen al techo'] : ['ok','bien calibrado'];
+    return `<tr>
+      <td><b style="font-size:12px">${esc(it.titulo.slice(0,42))}</b>
+        <div style="font:400 10px 'JetBrains Mono';color:var(--ink3)">SKU ${esc(it.sku)} · ${esc(cuotasLabel(it.cuotas))}</div></td>
+      <td><span class="chip mut">${esc(p.tipo)}</span><div style="font-size:10.5px;color:var(--ink3);margin-top:2px">${esc((p.promo||'').slice(0,22))}</div></td>
+      <td class="r n">${pes(it.lista)}</td>
+      <td class="r n">${pes(it.precioActivo)}<div style="font-size:10.5px;color:var(--ink3)">${it.descActivo?'−'+pct(it.descActivo):''}</div></td>
+      <td class="r n">${pes(p.max)}<div style="font-size:10.5px;color:var(--ink3)">mín −${pct(p.pisoPct)}</div></td>
+      <td class="r n">${pes(p.sug)}<div style="font-size:10.5px;color:var(--ink3)">${p.sugPct?'−'+pct(p.sugPct):''}</div></td>
+      <td class="r n" style="color:${o.brechaSug>0?'var(--bad)':'var(--ink3)'};font-weight:600">
+        ${o.brechaSug!=null?(o.brechaSug>0?'+':'')+num(o.brechaSug):'—'}</td>
+      <td><span class="chip ${st[0]}">${st[1]}</span></td>
+      <td class="r"><button class="btn xs" data-op="${i}">Sumar</button>
+        <button class="btn xs" data-goto="${esc(it.sku)}">SKU</button></td>
+    </tr>`;
+  }).join('');
+
+  $('#wrap').innerHTML = `
+    <div class="kpis">
+      <div class="kpi"><span class="k">Candidaturas</span><span class="v">${lista.length}</span><span class="d">publicación × campaña</span></div>
+      <div class="kpi hot"><span class="k">Con brecha</span><span class="v">${conB.length}</span><span class="d">por debajo del sugerido</span></div>
+      <div class="kpi hot"><span class="k">Brecha total</span><span class="v">${num(total)}</span><span class="d">pesos por unidad</span></div>
+    </div>
+    ${S.campFiltro?`<div class="aviso">Filtrando por una campaña. <a href="#" id="limpC">Ver todas</a></div>`:''}
+    <div class="panel"><h3>Ordenadas por brecha
+      <span class="hint">Comparado contra el precio más bajo al que vendés hoy</span></h3>
+      <div class="scroll"><table>
+        <thead><tr><th>Publicación</th><th>Campaña</th><th class="r">Lista</th><th class="r">Hoy</th>
+        <th class="r">Techo</th><th class="r">Sugerido</th><th class="r">Brecha/u</th><th>Estado</th><th></th></tr></thead>
+        <tbody>${filas || '<tr><td colspan="9"><div class="empty"><b>Nada por acá</b><p>No hay candidaturas abiertas.</p></div></td></tr>'}</tbody>
+      </table></div></div>`;
+
+  if ($('#limpC')) $('#limpC').onclick = e => { e.preventDefault(); S.campFiltro=null; render(); };
+  $$('[data-op]').forEach(b => b.onclick = () => abrirSumar(lista[+b.dataset.op]));
+  $$('[data-goto]').forEach(b => b.onclick = () => {
+    S.skuSel = b.dataset.goto; S.q=''; localStorage.setItem('cdp_sku',S.skuSel); ir('sku');
+  });
+}
+
+/* ═══ VISTA 3 · CAMPAÑAS ═══ */
+function vCamp() {
+  $('#tit').textContent = 'Campañas';
+  const cards = S.camps.map(c => {
+    const items = S.filas.filter(f => f.promoId === String(c.promo_id));
+    const dentro = items.filter(f => f.status==='started'||f.status==='pending').length;
+    const cand = items.filter(f => f.status==='candidate').length;
+    const d = diasPara(c.vence_aceptacion);
+    const cls = d==null?'':d<=2?'urg':d<=6?'pron':'calm';
+    return {c,dentro,cand,d,cls};
+  }).sort((a,b) => (a.d ?? 9999) - (b.d ?? 9999));
+
+  $('#wrap').innerHTML = `<div class="cards">${cards.map(({c,dentro,cand,d,cls}) => `
+    <div class="card ${cls}">
+      <span class="tipo">${esc(c.tipo)}</span>
+      <span class="nom">${esc(c.nombre || c.promo_id)}</span>
+      <div class="venc"><span>Vence para sumarse</span><b>${d==null?'—':d<0?'vencida':d+' día'+(d===1?'':'s')}</b></div>
+      ${c.inicio?`<div class="venc"><span>Vigencia</span><b>${fecha(c.inicio)} → ${fecha(c.fin)}</b></div>`:''}
+      ${c['meli_%']!=='' && c['meli_%']!=null?`<div class="venc"><span>Co-fondeo</span><b>ML ${c['meli_%']}% / vos ${c['seller_%']}%</b></div>`:''}
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:2px">
+        <span class="chip ${dentro?'ok':'mut'}">${dentro} adentro</span>
+        <span class="chip ${cand?'acc':'mut'}">${cand} disponibles</span>
+      </div>
+      ${cand?`<button class="btn sm" data-camp="${esc(c.promo_id)}" style="margin-top:4px">Ver candidatos</button>`:''}
+    </div>`).join('') || vacio('Sin campañas','No hay campañas abiertas.')}</div>`;
+
+  $$('[data-camp]').forEach(b => b.onclick = () => { S.campFiltro = b.dataset.camp; ir('oportunidades'); });
+}
+
+/* ═══ VISTA 4 · CREDIBILIDAD ═══ */
+function vCred() {
+  $('#tit').textContent = 'Credibilidad';
+  const conH = S.items.filter(i => i.muestras > 0);
+  if (!conH.length) {
+    $('#wrap').innerHTML = avisoOrden() + vacio('El histórico recién arranca',
+      'Cada sincronización guarda una foto del día. Con la sync automática de las 07:00 vas a tener el reloj completo en una semana.');
+    return;
+  }
+  const listos = conH.filter(i => i.dias >= VENTANA);
+  const corr = conH.filter(i => i.dias > 0 && i.dias < VENTANA);
+  const grupos = S.skus.filter(g => g.pubs.length > 1);
 
   $('#wrap').innerHTML = `
     <div class="kpis">
       <div class="kpi good"><span class="k">Listas</span><span class="v">${listos.length}</span><span class="d">≥ ${VENTANA} días sin oferta</span></div>
-      <div class="kpi"><span class="k">Reloj corriendo</span><span class="v">${corriendo.length}</span><span class="d">esperando la ventana</span></div>
-      <div class="kpi"><span class="k">Días de histórico</span><span class="v">${Math.max(...conHist.map(i=>i.muestras))}</span><span class="d">se acumula solo</span></div>
+      <div class="kpi"><span class="k">Reloj corriendo</span><span class="v">${corr.length}</span><span class="d">esperando la ventana</span></div>
+      <div class="kpi"><span class="k">Días de histórico</span><span class="v">${Math.max(...conH.map(i=>i.muestras))}</span><span class="d">se acumula solo</span></div>
     </div>
-
-    <div class="aviso ok"><b>El orden correcto para subir precios:</b>
-      1 · sacar las ofertas · 2 · actualizar el precio · 3 · esperar ${VENTANA} días · 4 · volver a ofertas.
-      Si subís el precio con las ofertas puestas, Meli te las saca igual pero la base de credibilidad
-      sigue anclada al precio viejo: perdés la promo y no arrancaste el reloj.</div>
-
-    ${grupos.length ? `<div class="panel"><h2>Rotación de espejos
-      <span class="hint">Escalonar para no quedar sin exposición</span></h2>
+    ${avisoOrden()}
+    ${grupos.length?`<div class="panel"><h3>Rotación de espejos
+      <span class="hint">Escalonar para no quedar sin exposición</span></h3>
       <div class="scroll"><table>
-        <thead><tr><th>SKU</th><th>Publicaciones</th><th>Con oferta</th><th>Plan sugerido</th></tr></thead>
-        <tbody>${grupos.map(g => `<tr>
-          <td class="n">${esc(g.sku)}</td>
-          <td>${g.items.map(i=>`<div style="font-size:12px">${esc(i.titulo.slice(0,38))} <small style="color:var(--ink3)">${i.cuotas?'cuotas':'contado'}</small></div>`).join('')}</td>
-          <td>${g.items.map(i=>i.activas.length
-            ?'<span class="chip ok">sí</span>':'<span class="chip mut">no</span>').join(' ')}</td>
-          <td style="font-size:12.5px;color:var(--ink2)">${esc(g.plan)}</td>
-        </tr>`).join('')}</tbody></table></div></div>` : ''}
+        <thead><tr><th>SKU</th><th>Publicaciones</th><th>Plan sugerido</th><th></th></tr></thead>
+        <tbody>${grupos.map(g => {
+          const con = g.pubs.filter(p => p.activas.length).length;
+          const plan = con === g.pubs.length
+            ? 'Sacá de ofertas la de cuotas, ajustale el precio, y dejá las otras vendiendo. En ' + VENTANA + ' días invertí.'
+            : con === 0 ? 'Ninguna tiene oferta. Sumá al menos una para no perder exposición.'
+            : 'Escalonado en curso: ' + con + ' de ' + g.pubs.length + ' con oferta.';
+          return `<tr>
+            <td class="n"><b>${esc(g.sku)}</b></td>
+            <td>${g.pubs.map(p => `<div style="font-size:11.5px;display:flex;gap:6px;align-items:center">
+              <span class="chip ${p.activas.length?'ok':'mut'}">${p.activas.length?'con oferta':'sin oferta'}</span>
+              ${esc(cuotasLabel(p.cuotas))} · ${pes(p.lista)}
+              ${p.muestras?`<span style="color:var(--ink3)">${p.dias}/${VENTANA}d</span>`:''}</div>`).join('')}</td>
+            <td style="font-size:12px;color:var(--ink2)">${esc(plan)}</td>
+            <td class="r"><button class="btn xs" data-goto="${esc(g.sku)}">Abrir</button></td>
+          </tr>`;
+        }).join('')}</tbody></table></div></div>`:''}`;
 
-    <div class="panel"><h2>Reloj por publicación</h2>
-      <div class="scroll"><table>
-        <thead><tr><th>Publicación</th><th>Ahora</th><th class="r">Días sin oferta</th><th>Progreso</th><th>Estado</th></tr></thead>
-        <tbody>${filas}</tbody></table></div></div>`;
-}
-
-/** Agrupa publicaciones espejo por SKU y propone el escalonado. */
-function agruparEspejos() {
-  const m = new Map();
-  S.items.forEach(it => {
-    const k = it.sku || ('~' + it.titulo.slice(0,28));
-    if (!m.has(k)) m.set(k, []);
-    m.get(k).push(it);
+  $$('[data-goto]').forEach(b => b.onclick = () => {
+    S.skuSel = b.dataset.goto; S.q=''; localStorage.setItem('cdp_sku',S.skuSel); ir('sku');
   });
-  return [...m.entries()].filter(([,v]) => v.length > 1).map(([sku,items]) => {
-    const conOferta = items.filter(i => i.activas.length);
-    let plan;
-    if (conOferta.length === items.length)
-      plan = 'Sacá de ofertas una sola (la de cuotas), ajustale el precio y dejá la otra vendiendo. En ' + VENTANA + ' días invertí.';
-    else if (conOferta.length === 0)
-      plan = 'Ninguna tiene oferta. Sumá al menos una para no perder exposición mientras corre el reloj de la otra.';
-    else
-      plan = 'Escalonado en curso: ' + conOferta.length + ' de ' + items.length + ' con oferta. Cuando la que espera cumpla ' + VENTANA + ' días, invertí.';
-    return {sku, items, plan};
-  }).sort((a,b) => b.items.length - a.items.length);
 }
+const avisoOrden = () => `<div class="aviso ok"><b>El orden correcto para subir precios:</b>
+  1 · sacar las ofertas · 2 · actualizar el precio · 3 · esperar ${VENTANA} días · 4 · volver a ofertas.
+  Si subís el precio con las ofertas puestas, Meli te las saca igual pero la base de credibilidad sigue
+  anclada al precio viejo: perdés la promo y no arrancaste el reloj.</div>`;
 
-/* ── 5 · REGISTRO ─────────────────────────────────────────── */
+/* ═══ VISTA 5 · REGISTRO ═══ */
 function vLog() {
   $('#tit').textContent = 'Registro';
-  $('#sub').innerHTML = 'Todo lo que la app escribió en Mercado Libre.';
   const filas = [...S.log].reverse().map(l => `<tr>
-    <td class="n" style="white-space:nowrap">${esc(String(l.ts).slice(0,19).replace('T',' '))}</td>
+    <td class="n" style="white-space:nowrap;font-size:11.5px">${esc(String(l.ts).slice(0,19).replace('T',' '))}</td>
     <td><span class="chip ${l.accion==='salir'?'warn':'acc'}">${esc(l.accion)}</span></td>
-    <td class="n">${esc(l.item_id)}</td>
-    <td style="font-size:12px">${esc(l.detalle)}</td>
-    <td style="font-size:12px;color:${String(l.resultado).startsWith('OK')?'var(--ok)':'var(--bad)'}">${esc(String(l.resultado).slice(0,90))}</td>
+    <td class="n" style="font-size:11.5px">${esc(l.item_id)}</td>
+    <td style="font-size:11.5px">${esc(l.detalle)}</td>
+    <td style="font-size:11.5px;color:${String(l.resultado).startsWith('OK')?'var(--ok)':'var(--bad)'}">${esc(String(l.resultado).slice(0,90))}</td>
   </tr>`).join('');
-  $('#wrap').innerHTML = `<div class="panel"><h2>Últimas acciones</h2><div class="scroll"><table>
-    <thead><tr><th>Cuándo</th><th>Acción</th><th>Ítem</th><th>Detalle</th><th>Resultado</th></tr></thead>
-    <tbody>${filas || '<tr><td colspan="5"><div class="empty"><b>Sin movimientos</b><p>Todavía no se escribió nada en Meli desde acá.</p></div></td></tr>'}</tbody>
+  $('#wrap').innerHTML = `<div class="panel"><h3>Todo lo que la app escribió en Mercado Libre</h3>
+    <div class="scroll"><table>
+      <thead><tr><th>Cuándo</th><th>Acción</th><th>Ítem</th><th>Detalle</th><th>Resultado</th></tr></thead>
+      <tbody>${filas || '<tr><td colspan="5"><div class="empty"><b>Sin movimientos</b><p>Todavía no se escribió nada desde acá.</p></div></td></tr>'}</tbody>
     </table></div></div>`;
 }
 
-/* ══════════════════════════════════════════════════════════════
-   sumar a promoción
-   ══════════════════════════════════════════════════════════════ */
+/* ═══ SUMAR ═══ */
 let sumarActual = null;
 function abrirSumar(o) {
-  if (!o) return;
+  if (!o || !o.p) return;
   sumarActual = o;
   const {it,p} = o;
-  const solo = p.aceptaSolo;
-  const lightning = p.tipo === 'LIGHTNING';
-  const precioDef = p.sug || p.max;
+  const solo = p.aceptaSolo, ligh = p.tipo === 'LIGHTNING';
+  const def = p.sug || p.max;
 
   $('#sTit').textContent = 'Sumar a ' + (p.promo || p.tipo);
   $('#sOk').classList.remove('hide');
   $('#sBody').innerHTML = `
+    <div class="rango"><span>${esc(it.titulo.slice(0,44))}</span></div>
     <div class="rango">
-      <span>${esc(it.titulo.slice(0,44))}</span>
-    </div>
-    <div class="rango"><span>Lista <b class="n">${pes(it.lista)}</b></span>
+      <span class="chip acc">${esc(cuotasLabel(it.cuotas))}</span>
+      <span>Lista <b class="n">${pes(it.lista)}</b></span>
       ${it.precioActivo?`<span>Hoy <b class="n">${pes(it.precioActivo)}</b></span>`:''}
       <span class="chip mut">${esc(p.tipo)}</span></div>
-
     ${solo ? `<div class="aviso">Esta campaña la define Mercado Libre: vos solo aceptás.
-        El precio será <b>${pes(p.precio || p.sug)}</b>${p.meliPct!=null?` — ML pone ${p.meliPct}% y vos ${p.sellerPct}%`:''}.</div>`
-    : `
-    <div class="fld">
-      <label>Precio final al comprador</label>
-      <input type="number" id="fPrecio" value="${precioDef?Math.round(precioDef):''}" step="1">
+        Precio <b>${pes(p.precio || p.sug)}</b>${p.meliPct!=null?` — ML pone ${p.meliPct}% y vos ${p.sellerPct}%`:''}.</div>`
+    : `<div class="fld"><label>Precio final al comprador</label>
+      <input type="number" id="fPrecio" value="${def?Math.round(def):''}" step="1">
       <div class="rango">
-        <button type="button" data-set="${p.max||''}">Techo ${pes(p.max)}</button>
+        ${p.max?`<button type="button" data-set="${p.max}">Techo ${pes(p.max)}</button>`:''}
         ${p.sug?`<button type="button" data-set="${p.sug}">Sugerido ${pes(p.sug)}</button>`:''}
         ${p.min?`<button type="button" data-set="${p.min}">Piso ${pes(p.min)}</button>`:''}
-      </div>
-      <span class="help" id="fCalc"></span>
-    </div>
-    ${lightning?`<div class="fld"><label>Stock a reservar</label>
+      </div><span class="help" id="fCalc"></span></div>
+    ${ligh?`<div class="fld"><label>Stock a reservar</label>
       <input type="number" id="fStock" value="${p.stockMin||1}" min="${p.stockMin||1}" ${p.stockMax?`max="${p.stockMax}"`:''}>
-      <span class="help">Meli pide entre ${p.stockMin??'—'} y ${p.stockMax??'—'} unidades. Cuando se agota, la oferta termina.</span></div>`:''}
+      <span class="help">Meli pide entre ${p.stockMin??'—'} y ${p.stockMax??'—'} unidades.</span></div>`:''}
     ${p.tipo==='PRICE_DISCOUNT'?`<div class="aviso">Máximo 14 días. Descuento entre 5% y 80%.
-      Si el ítem ya está en un DEAL, este descuento no se aplica hasta que el DEAL termine.</div>`:''}
-    `}
-    ${lightning?`<div class="aviso bad">Una vez activa, la oferta relámpago <b>no se puede eliminar</b>. Solo se puede pausar el ítem.</div>`:''}
-  `;
+      Si el ítem ya está en un DEAL, no se aplica hasta que el DEAL termine.</div>`:''}`}
+    ${ligh?`<div class="aviso bad">Una vez activa, la relámpago <b>no se puede eliminar</b>. Solo pausar el ítem.</div>`:''}`;
 
   const calc = () => {
-    const v = +($('#fPrecio')||{}).value;
     const el = $('#fCalc'); if (!el) return;
+    const v = +($('#fPrecio')||{}).value;
     if (!v || !it.lista) { el.textContent=''; return; }
-    const d = (1 - v/it.lista)*100;
     const fuera = (p.max && v > p.max) || (p.min && v < p.min);
-    el.innerHTML = `Descuento <b>${pct(d)}</b>` +
-      (fuera ? ` — <span style="color:var(--bad)">fuera del rango permitido (${pes(p.min)} a ${pes(p.max)})</span>` : '');
+    el.innerHTML = `Descuento <b>${pct((1 - v/it.lista)*100)}</b>` +
+      (fuera?` — <span style="color:var(--bad)">fuera del rango (${pes(p.min)} a ${pes(p.max)})</span>`:'');
   };
   $$('#sBody [data-set]').forEach(b => b.onclick = () => { $('#fPrecio').value = Math.round(+b.dataset.set); calc(); });
   if ($('#fPrecio')) { $('#fPrecio').oninput = calc; calc(); }
   $('#dSumar').showModal();
 }
 
+/* ═══ CREAR DESCUENTO INDIVIDUAL A MANO ═══ */
+const iso = d => d.toISOString().slice(0,10);
+function abrirManual(it) {
+  // Sin invitación de campaña, el único camino es PRICE_DISCOUNT: lo crea el vendedor.
+  // La API no devuelve techo ni piso para esto, así que aplicamos la regla documentada 5%–80%.
+  const techo = it.lista ? Math.floor(it.lista * 0.95) : null;   // descuento mínimo 5%
+  const piso  = it.lista ? Math.ceil(it.lista * 0.20)  : null;   // descuento máximo 80%
+  const hoy = new Date(), fin = new Date(Date.now() + 13*864e5);
+
+  sumarActual = { it, manual:true };
+  $('#sTit').textContent = 'Crear descuento individual';
+  $('#sOk').classList.remove('hide');
+  $('#sBody').innerHTML = `
+    <div class="rango"><span>${esc(it.titulo.slice(0,44))}</span></div>
+    <div class="rango">
+      <span class="chip acc">${esc(cuotasLabel(it.cuotas))}</span>
+      <span class="chip mut">SKU ${esc(it.sku||'—')}</span>
+      <span>Lista <b class="n">${pes(it.lista)}</b></span>
+      <span>Stock <b class="n">${num(it.stock)}</b></span></div>
+
+    <div class="aviso">Esta publicación no fue invitada a ninguna campaña, así que va por
+      <b>descuento individual</b>. Lo definís vos entero: Meli no da techo ni sugerencia acá.</div>
+
+    <div class="fld"><label>Precio final al comprador</label>
+      <input type="number" id="fPrecio" value="${techo||''}" step="1">
+      <div class="rango">
+        ${techo?`<button type="button" data-set="${techo}">Mínimo 5% · ${pes(techo)}</button>`:''}
+        ${it.lista?`<button type="button" data-set="${Math.floor(it.lista*0.9)}">10% · ${pes(Math.floor(it.lista*0.9))}</button>`:''}
+        ${it.lista?`<button type="button" data-set="${Math.floor(it.lista*0.85)}">15% · ${pes(Math.floor(it.lista*0.85))}</button>`:''}
+      </div>
+      <span class="help" id="fCalc"></span></div>
+
+    <div class="fld" style="flex-direction:row;gap:12px">
+      <div class="fld" style="flex:1"><label>Desde</label>
+        <input type="text" id="fIni" value="${iso(hoy)}" placeholder="AAAA-MM-DD"></div>
+      <div class="fld" style="flex:1"><label>Hasta</label>
+        <input type="text" id="fFin" value="${iso(fin)}" placeholder="AAAA-MM-DD"></div>
+    </div>
+    <span class="help">Máximo 14 días. Las fechas cuentan el día entero: arranca 00:00 y termina 23:59.</span>
+
+    ${it.dias != null && it.dias < VENTANA && it.muestras > 0
+      ? `<div class="aviso bad">Esta publicación lleva solo <b>${it.dias} de ${VENTANA} días</b> sin oferta.
+         Si el precio no le resulta creíble a Meli, el descuento va a ser rechazado.</div>` : ''}`;
+
+  const calc = () => {
+    const el = $('#fCalc'); if (!el) return;
+    const v = +$('#fPrecio').value;
+    if (!v || !it.lista) { el.textContent=''; return; }
+    const d = (1 - v/it.lista)*100;
+    const fuera = d < 5 || d >= 80;
+    el.innerHTML = `Descuento <b>${pct(d)}</b>` + (fuera
+      ? ` — <span style="color:var(--bad)">fuera del 5%–80% permitido (${pes(piso)} a ${pes(techo)})</span>` : '');
+  };
+  $$('#sBody [data-set]').forEach(b => b.onclick = () => { $('#fPrecio').value = +b.dataset.set; calc(); });
+  $('#fPrecio').oninput = calc; calc();
+  $('#dSumar').showModal();
+}
+
 $('#sOk').onclick = async () => {
   const o = sumarActual; if (!o) return;
-  const {it,p} = o;
+  const {it} = o;
+
+  // Descuento individual creado a mano
+  if (o.manual) {
+    const v = +($('#fPrecio')||{}).value;
+    if (!v) { toast('Falta el precio','bad'); return; }
+    const d = (1 - v/it.lista)*100;
+    if (d < 5 || d >= 80) { toast('El descuento tiene que estar entre 5% y 80%','bad'); return; }
+    const ini = ($('#fIni')||{}).value, f = ($('#fFin')||{}).value;
+    if ((new Date(f) - new Date(ini))/864e5 > 14) { toast('El máximo son 14 días','bad'); return; }
+    $('#sOk').disabled = true; $('#sOk').innerHTML = '<span class="spin"></span> Creando';
+    try {
+      await api('sumar', { item_id: it.id, promotion_type:'PRICE_DISCOUNT', deal_price: v,
+        start_date: ini + 'T00:00:00', finish_date: f + 'T00:00:00' });
+      $('#dSumar').close(); toast('Descuento creado', 'ok'); cargar();
+    } catch (e) { toast(e.message, 'bad'); }
+    finally { $('#sOk').disabled = false; $('#sOk').textContent = 'Confirmar'; }
+    return;
+  }
+
+  const p = o.p;
   const body = { item_id: it.id, promotion_type: p.tipo };
   if (p.promoId) body.promotion_id = p.promoId;
   if (!p.aceptaSolo) {
@@ -801,76 +1018,44 @@ $('#sOk').onclick = async () => {
     if (p.tipo === 'LIGHTNING') body.stock = +($('#fStock')||{}).value || 1;
   }
   $('#sOk').disabled = true; $('#sOk').innerHTML = '<span class="spin"></span> Enviando';
-  try {
-    await api('sumar', body);
-    $('#dSumar').close(); toast('Sumado a ' + (p.promo || p.tipo), 'ok'); cargar();
-  } catch (e) { toast(e.message, 'bad'); }
+  try { await api('sumar', body); $('#dSumar').close();
+    toast('Sumado a ' + (p.promo || p.tipo), 'ok'); cargar(); }
+  catch (e) { toast(e.message, 'bad'); }
   finally { $('#sOk').disabled = false; $('#sOk').textContent = 'Confirmar'; }
 };
 
-async function lote(lista, modo) {
-  const acciones = [...S.sel].map(i => {
-    const o = lista[i]; if (!o) return null;
-    const b = { accion:'sumar', item_id:o.it.id, promotion_type:o.p.tipo };
-    if (o.p.promoId) b.promotion_id = o.p.promoId;
-    if (!o.p.aceptaSolo) b.deal_price = Math.round(modo==='max' ? o.p.max : (o.p.sug || o.p.max));
-    if (o.p.tipo === 'LIGHTNING') return null;   // relámpago necesita stock, va una por una
-    return b;
-  }).filter(Boolean);
-
-  if (!acciones.length) { toast('Nada aplicable en la selección','bad'); return; }
-  if (!confirm('Vas a sumar ' + acciones.length + ' publicaciones. ¿Confirmás?')) return;
-
-  toast('Procesando ' + acciones.length + '…');
-  try {
-    const r = await api('lote', { acciones });
-    const ok = r.filter(x => x.ok).length;
-    toast(ok + ' de ' + r.length + ' sumadas', ok === r.length ? 'ok' : 'bad');
-    r.filter(x => !x.ok).slice(0,4).forEach(x => toast(x.item_id + ': ' + x.error, 'bad'));
-    S.sel.clear(); cargar();
-  } catch (e) { toast(e.message, 'bad'); }
-}
-
-/* ══════════════════════════════════════════════════════════════
-   carga y navegación
-   ══════════════════════════════════════════════════════════════ */
+/* ═══ carga ═══ */
 async function cargar() {
   if (!S.url || !S.key) { render(); return; }
-  S.cargando = true; $('#recargar').innerHTML = '<span class="spin"></span>';
+  $('#recargar').innerHTML = '<span class="spin"></span>';
   try {
     procesar(await api('datos'));
     const u = S.data.ultimaSync || {};
     $('#pie').innerHTML = u.cuando
-      ? 'Sync ' + new Date(u.cuando).toLocaleString('es-AR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}) +
-        '<br>' + (u.publicaciones||0) + ' publicaciones · ' + (u.filas||0) + ' filas'
+      ? 'Sync ' + new Date(u.cuando).toLocaleString('es-AR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})
+        + '<br>' + (u.publicaciones||0) + ' publicaciones · ' + (u.filas||0) + ' filas'
       : 'Conectado, sin sincronizar';
-  } catch (e) { toast(e.message, 'bad'); }
-  finally { S.cargando = false; $('#recargar').textContent = 'Recargar'; render(); }
+  } catch (e) { toast(e.message,'bad'); }
+  finally { $('#recargar').textContent = 'Recargar'; render(); }
 }
-
 $('#sync').onclick = async () => {
   const b = $('#sync'); b.disabled = true; b.innerHTML = '<span class="spin"></span> Sincronizando';
-  try {
-    const r = await api('sync');
-    toast(r.publicaciones + ' publicaciones y ' + r.filas + ' promociones en ' + r.segundos + 's', 'ok');
-    await cargar();
-  } catch (e) { toast(e.message, 'bad'); }
+  try { const r = await api('sync');
+    toast(r.publicaciones + ' publicaciones y ' + r.filas + ' promociones en ' + r.segundos + 's','ok');
+    await cargar(); }
+  catch (e) { toast(e.message,'bad'); }
   finally { b.disabled = false; b.textContent = 'Sincronizar con Meli'; }
 };
 $('#recargar').onclick = cargar;
 
 function ir(v) {
   S.vista = v;
-  $$('.nav').forEach(n => n.setAttribute('aria-current', n.dataset.v === v ? 'true' : 'false'));
+  $$('.nav').forEach(n => n.setAttribute('aria-current', n.dataset.v===v ? 'true':'false'));
   if (v !== 'oportunidades') S.campFiltro = null;
-  S.sel.clear();
   render();
 }
 $$('.nav').forEach(n => n.onclick = () => ir(n.dataset.v));
 
-let tq; $('#q').oninput = e => { clearTimeout(tq); tq = setTimeout(() => { S.q = e.target.value.trim(); render(); }, 180); };
-
-/* configuración */
 function abrirCfg(){ $('#cUrl').value = S.url; $('#cKey').value = S.key; $('#dCfg').showModal(); }
 $('#cfg').onclick = abrirCfg;
 $('#cCancel').onclick = () => $('#dCfg').close();
@@ -881,17 +1066,15 @@ $('#cSave').onclick = () => {
 };
 $('#sCancel').onclick = () => $('#dSumar').close();
 
-/* tema */
 $('#tema').onclick = () => {
   const cur = document.documentElement.getAttribute('data-theme');
-  const next = cur === 'dark' ? 'light' : cur === 'light' ? '' : 'dark';
-  next ? document.documentElement.setAttribute('data-theme', next)
+  const next = cur==='dark'?'light':cur==='light'?'':'dark';
+  next ? document.documentElement.setAttribute('data-theme',next)
        : document.documentElement.removeAttribute('data-theme');
   try { localStorage.setItem('cdp_tema', next); } catch(e){}
 };
 try { const t = localStorage.getItem('cdp_tema'); if (t) document.documentElement.setAttribute('data-theme', t); } catch(e){}
 
-/* arranque */
 if (!S.url) abrirCfg();
 cargar();
 </script>
