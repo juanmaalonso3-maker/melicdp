@@ -10,6 +10,16 @@
  * Los tokens ya guardados siguen ahí (viven en Script Properties),
  * así que no hace falta volver a autorizar.
  *
+ * SYNC EN PARALELO (28-ago-2026): sincronizarTodo hacía ~300 llamadas HTTP una
+ * atrás de otra y tardaba varios minutos. Ahora usa UrlFetchApp.fetchAll(), que
+ * dispara lotes en paralelo, y cachea comisiones y costos de envío 7 días en la
+ * hoja Cache (se crea sola). Quedan ~12 esperas en vez de ~300.
+ *
+ * VENTANA DE LAS RELÁMPAGO (28-ago-2026): la fila del ítem no trae la ventana
+ * de una oferta relámpago. Vive en el listado de ítems de la campaña, con hora
+ * exacta ("2026-08-31T00:00:00" a "2026-08-31T11:59:59"). Ahora se pide y se
+ * completa. Ver 5.4b.
+ *
  * DESPUÉS DE PEGAR:
  *   1. Guardá (Ctrl+S)
  *   2. Ejecutá  diagnostico   → tiene que loguear tu user_id y /users/me
@@ -133,6 +143,17 @@ function _arr(x) {
   return [];
 }
 
+/**
+ * Meli manda algunas fechas sin huso horario ("2026-08-31T11:59:59") y otras
+ * con él. Las sueltas son hora de Argentina: se les pega el -03:00 para que el
+ * navegador no las interprete según dónde esté abierto.
+ */
+function _fechaAR(v) {
+  if (!v) return '';
+  const s = String(v);
+  return /[Zz]$|[+-]\d{2}:?\d{2}$/.test(s) ? s : s + '-03:00';
+}
+
 function mlGet(path, intento) {
   intento = intento || 1;
   const r = UrlFetchApp.fetch(ML.API_HOST + path, {
@@ -148,6 +169,68 @@ function mlGet(path, intento) {
     return mlGet(path, intento + 1);
   }
   throw new Error('GET ' + path + ' -> ' + c + ' ' + r.getContentText().slice(0, 300));
+}
+
+/**
+ * Cuántas llamadas en paralelo por lote.
+ *
+ * Con 162 publicaciones: 25 son 7 vueltas (~9 s), 40 son 5 (~6 s). Más alto va
+ * más rápido pero araña el rate limit de Meli. Si empezás a ver 429 en el log,
+ * bajalo; mlGetMuchos reintenta solo las que fallan, así que el riesgo es
+ * perder tiempo, no datos.
+ */
+const LOTE = 40;
+
+/**
+ * Pide muchas rutas a la vez. Devuelve {ruta: datos}, con la ruta ausente si esa
+ * llamada falló — el que llama decide qué hacer con el hueco.
+ *
+ * Es la diferencia entre esperar 300 veces medio segundo y esperar 12 veces:
+ * UrlFetchApp.fetchAll() dispara todo el lote junto y espera al más lento.
+ * Los 429 (rate limit) y 401 (token vencido) se reintentan solo con las rutas
+ * que fallaron, no con el lote entero.
+ */
+function mlGetMuchos(rutas, intento) {
+  intento = intento || 1;
+  const salida = {}, fallaron = [];
+  const token  = getToken();          // una sola vez para todo el lote
+
+  for (var i = 0; i < rutas.length; i += LOTE) {
+    const tanda = rutas.slice(i, i + LOTE);
+    const reqs  = tanda.map(function (p) {
+      return {
+        url: ML.API_HOST + p, method: 'get',
+        headers: { Authorization: 'Bearer ' + token, accept: 'application/json' },
+        muteHttpExceptions: true
+      };
+    });
+
+    var res;
+    try { res = UrlFetchApp.fetchAll(reqs); }
+    catch (e) { tanda.forEach(function (p) { fallaron.push(p); }); continue; }
+
+    res.forEach(function (r, k) {
+      const c = r.getResponseCode();
+      if (c === 200) {
+        try { salida[tanda[k]] = JSON.parse(r.getContentText()); }
+        catch (e) { fallaron.push(tanda[k]); }
+      } else if (c === 401 || c === 429 || c === 423) {
+        if (c === 401) P.setProperty('ML_EXPIRA_EN', '0');
+        fallaron.push(tanda[k]);
+      }
+      // Cualquier otro código (404, 403) es una respuesta legítima de "no hay":
+      // no se reintenta, queda como hueco.
+    });
+
+    if (i + LOTE < rutas.length) Utilities.sleep(120);   // respiro entre lotes
+  }
+
+  if (fallaron.length && intento <= 2) {
+    Utilities.sleep(1500 * intento);
+    const seg = mlGetMuchos(fallaron, intento + 1);
+    Object.keys(seg).forEach(function (k) { salida[k] = seg[k]; });
+  }
+  return salida;
 }
 
 /**
@@ -229,6 +312,7 @@ function doPost(e) {
     switch (body.accion) {
       case 'datos': return _json({ ok: true, data: leerSnapshot() });
       case 'sync':  return _json({ ok: true, data: sincronizarTodo() });
+      case 'sku':   return _json({ ok: true, data: refrescarSku(body.sku) });
       case 'sumar': return _json({ ok: true, data: sumarAPromo(body) });
       case 'salir': return _json({ ok: true, data: salirDePromo(body) });
       case 'lote':  return _json({ ok: true, data: ejecutarLote(body.acciones || []) });
@@ -252,18 +336,65 @@ function _pag(t, c) {
    5 · SINCRONIZACIÓN
    ═══════════════════════════════════════════════════════════════════════════ */
 
+/* ── Caché de costos ────────────────────────────────────────────────────────
+   La comisión de una combinación categoría+tipo y el costo de envío de un SKU
+   no cambian de un día para el otro. Guardarlos saca ~130 llamadas de cada
+   sincronización. Se recalculan solos a los 7 días. */
+
+const CACHE_DIAS = 7;
+
+/** Tipos cuya ventana se define por publicación y no por campaña: hay que
+ *  pedirla al listado de ítems de la campaña. La relámpago es el caso típico
+ *  —sale un día, unas horas— y la oferta del día funciona igual. */
+const VENTANA_POR_ITEM = ['LIGHTNING', 'DOD'];
+
+function _cacheLeer() {
+  const sh = _hoja('Cache', ['clave', 'valor', 'calculado']);
+  const m = {};
+  if (sh.getLastRow() < 2) return m;
+  const corte = Date.now() - CACHE_DIAS * 864e5;
+  sh.getRange(2, 1, sh.getLastRow() - 1, 3).getValues().forEach(function (r) {
+    if (!r[0]) return;
+    const t = new Date(r[2]).getTime();
+    if (isNaN(t) || t < corte) return;               // vencido: se ignora
+    try { m[String(r[0])] = JSON.parse(r[1]); } catch (e) {}
+  });
+  return m;
+}
+
+function _cacheGuardar(m) {
+  const sh = _hoja('Cache', ['clave', 'valor', 'calculado']);
+  if (sh.getLastRow() > 1) sh.getRange(2, 1, sh.getLastRow() - 1, 3).clearContent();
+  const ahora = new Date();
+  const filas = Object.keys(m).map(function (k) { return [k, JSON.stringify(m[k]), ahora]; });
+  if (filas.length) sh.getRange(2, 1, filas.length, 3).setValues(filas);
+}
+
+/** Vacía el caché a mano. Correlo si Meli te cambió una comisión o una tarifa
+ *  de envío y no querés esperar los 7 días. */
+function limpiarCacheCostos() {
+  const sh = _hoja('Cache', ['clave', 'valor', 'calculado']);
+  if (sh.getLastRow() > 1) sh.getRange(2, 1, sh.getLastRow() - 1, 3).clearContent();
+  Logger.log('Caché de costos vaciado. La próxima sync recalcula todo.');
+}
+
+
 function sincronizarTodo() {
   const t0  = Date.now();
   const uid = P.getProperty('ML_USER_ID');
   if (!uid) throw new Error('Sin user_id. Corré paso1_autorizar.');
+  const marca = {};                       // segundos por etapa, para el log
+  const paso  = function (n) { marca[n] = Math.round((Date.now() - t0) / 1000); };
 
   // 5.1 · Campañas abiertas (las tarjetas de la CDP, con su vencimiento)
   // Ojo: este endpoint devuelve un objeto {results:[...]}, no un array pelado.
+  // Acá viven las fechas de las campañas SMART, que NO bajan al ítem: el front
+  // las cruza por promo_id para poder ubicarlas en el calendario.
   var camps = [];
   try {
     const raw = mlGet('/seller-promotions/users/' + uid + '?app_version=v2');
     camps = _arr(raw);
-    Logger.log('campañas: ' + camps.length + ' — crudo: ' + JSON.stringify(raw).slice(0, 400));
+    Logger.log('campañas: ' + camps.length);
   } catch (err) { Logger.log('campañas: ' + err); }
 
   _volcarHoja('Campanias',
@@ -275,8 +406,10 @@ function sincronizarTodo() {
               b.type || '', b.meli_percent != null ? b.meli_percent : '',
               b.seller_percent != null ? b.seller_percent : ''];
     }));
+  paso('campanias');
 
   // 5.2 · Publicaciones activas
+  // El scan es secuencial por diseño: cada página depende del scroll_id anterior.
   const ids = [];
   var scroll = null, v = 0;
   do {
@@ -285,84 +418,187 @@ function sincronizarTodo() {
     (r.results || []).forEach(function (x) { ids.push(x); });
     scroll = r.scroll_id; v++;
   } while (scroll && ids.length && v < 30);
+  paso('scan');
 
-  // 5.3 · Atributos y condiciones de venta
-  const info = {};
+  // 5.3 · Atributos y condiciones de venta, en paralelo
+  const rutasItems = [];
   for (var i = 0; i < ids.length; i += 20) {
-    mlGet('/items?ids=' + ids.slice(i, i + 20).join(',') +
-          '&attributes=id,title,price,available_quantity,sold_quantity,listing_type_id,' +
-          'category_id,permalink,thumbnail,seller_custom_field,shipping,catalog_listing,' +
-          'status,health,sale_terms')
-      .forEach(function (w) {
-        if (w.code !== 200 || !w.body) return;
-        const b = w.body;
-        var cuotas = '';
-        (b.sale_terms || []).forEach(function (s) {
-          if (s.id === 'INSTALLMENTS_INFORMATION' || /cuota/i.test(s.name || '')) cuotas = s.value_name || '';
-        });
-        info[b.id] = {
-          titulo: b.title || '', sku: b.seller_custom_field || '', precio: b.price,
-          stock: b.available_quantity, tipo: b.listing_type_id || '',
-          cat: b.category_id || '',
-          link: b.permalink || '', foto: b.thumbnail || '',
-          envioGratis: !!(b.shipping && b.shipping.free_shipping),
-          catalogo: b.catalog_listing === true, cuotas: cuotas
-        };
-      });
+    rutasItems.push('/items?ids=' + ids.slice(i, i + 20).join(',') +
+      '&attributes=id,title,price,available_quantity,sold_quantity,listing_type_id,' +
+      'category_id,permalink,thumbnail,seller_custom_field,shipping,catalog_listing,' +
+      'status,health,sale_terms');
   }
+  const info = {};
+  const resItems = mlGetMuchos(rutasItems);
+  Object.keys(resItems).forEach(function (ruta) {
+    (resItems[ruta] || []).forEach(function (w) {
+      if (w.code !== 200 || !w.body) return;
+      const b = w.body;
+      var cuotas = '';
+      (b.sale_terms || []).forEach(function (s) {
+        if (s.id === 'INSTALLMENTS_INFORMATION' || /cuota/i.test(s.name || '')) cuotas = s.value_name || '';
+      });
+      info[b.id] = {
+        titulo: b.title || '', sku: b.seller_custom_field || '', precio: b.price,
+        stock: b.available_quantity, tipo: b.listing_type_id || '',
+        cat: b.category_id || '',
+        link: b.permalink || '', foto: b.thumbnail || '',
+        envioGratis: !!(b.shipping && b.shipping.free_shipping),
+        catalogo: b.catalog_listing === true, cuotas: cuotas
+      };
+    });
+  });
+  paso('items');
 
   // 5.3b · COSTOS — para poder mostrar "Recibís"
-  //
+  const cache = _cacheLeer();
+  var golpes = 0, nuevos = 0;
+
   // La comisión depende de categoría + tipo de publicación, y dentro de una misma
   // combinación es lineal: comisión = pct·precio + fijo. Medido en la Freidora
   // (MLA456045): gold_pro 26,80% y gold_special 14,50%, ambos con fijo 0.
-  // Por eso alcanza con consultar una vez por combinación y no una por ítem.
+  // Se piden dos precios distintos para despejar las dos incógnitas.
   const combos = {};
   Object.keys(info).forEach(function (id) {
-    const m = info[id];
-    const k = m.cat + '|' + m.tipo;
+    const m = info[id], k = m.cat + '|' + m.tipo;
     if (!combos[k]) combos[k] = { cat: m.cat, tipo: m.tipo, precio: m.precio || 10000 };
   });
+
+  const faltanCom = [], rutasCom = [];
   Object.keys(combos).forEach(function (k) {
+    const guardado = cache['com|' + k];
+    if (guardado) { combos[k].pct = guardado.pct; combos[k].fijo = guardado.fijo; golpes++; return; }
     const c = combos[k];
-    const p1 = Math.max(200, Math.round(c.precio));
-    const p2 = Math.max(100, Math.round(c.precio * 0.5));
-    const f1 = _comision(p1, c.cat, c.tipo), f2 = _comision(p2, c.cat, c.tipo);
-    if (f1 != null && f2 != null && p1 !== p2) {
-      c.pct  = (f1 - f2) / (p1 - p2);
-      c.fijo = f1 - c.pct * p1;
-    }
-    Utilities.sleep(120);
+    c.p1 = Math.max(200, Math.round(c.precio));
+    c.p2 = Math.max(100, Math.round(c.precio * 0.5));
+    c.r1 = '/sites/MLA/listing_prices?price=' + c.p1 + '&category_id=' + encodeURIComponent(c.cat);
+    c.r2 = '/sites/MLA/listing_prices?price=' + c.p2 + '&category_id=' + encodeURIComponent(c.cat);
+    faltanCom.push(k); rutasCom.push(c.r1); rutasCom.push(c.r2);
   });
-  Logger.log('combos de comisión: ' + Object.keys(combos).length);
+
+  if (rutasCom.length) {
+    const resCom = mlGetMuchos(rutasCom);
+    const fee = function (r, tipo) {
+      if (!r) return null;
+      const arr = _arr(r).length ? _arr(r) : (Array.isArray(r) ? r : [r]);
+      const m = arr.filter(function (x) { return x.listing_type_id === tipo; })[0];
+      return m && m.sale_fee_amount != null ? m.sale_fee_amount : null;
+    };
+    faltanCom.forEach(function (k) {
+      const c = combos[k];
+      const f1 = fee(resCom[c.r1], c.tipo), f2 = fee(resCom[c.r2], c.tipo);
+      if (f1 != null && f2 != null && c.p1 !== c.p2) {
+        c.pct  = (f1 - f2) / (c.p1 - c.p2);
+        c.fijo = f1 - c.pct * c.p1;
+        cache['com|' + k] = { pct: c.pct, fijo: c.fijo };
+        nuevos++;
+      }
+    });
+  }
+  Logger.log('combos de comisión: ' + Object.keys(combos).length +
+             ' (del caché: ' + golpes + ')');
+  paso('comisiones');
 
   // El envío gratis lo paga el vendedor. Depende del producto físico, así que
   // se consulta una vez por SKU y no una por publicación.
-  const envios = {};
+  const porSku = {}, rutasEnv = [], claveEnv = {};
   Object.keys(info).forEach(function (id) {
     const m = info[id];
     if (!m.envioGratis) { m.envio = 0; return; }
     const k = m.sku || id;
-    if (envios[k] === undefined) {
-      try {
-        const s = mlGet('/users/' + uid + '/shipping_options/free?item_id=' + id);
-        envios[k] = (s && s.coverage && s.coverage.all_country &&
-                     s.coverage.all_country.list_cost) || 0;
-      } catch (e) { envios[k] = 0; }
-      Utilities.sleep(120);
-    }
-    m.envio = envios[k];
+    if (porSku[k] !== undefined) return;
+    const guardado = cache['env|' + k];
+    if (guardado != null) { porSku[k] = guardado; golpes++; return; }
+    porSku[k] = null;
+    const ruta = '/users/' + uid + '/shipping_options/free?item_id=' + id;
+    rutasEnv.push(ruta); claveEnv[ruta] = k;
   });
 
-  // 5.4 · Promociones por ítem
+  if (rutasEnv.length) {
+    const resEnv = mlGetMuchos(rutasEnv);
+    Object.keys(claveEnv).forEach(function (ruta) {
+      const s = resEnv[ruta];
+      const costo = (s && s.coverage && s.coverage.all_country &&
+                     s.coverage.all_country.list_cost) || 0;
+      porSku[claveEnv[ruta]] = costo;
+      cache['env|' + claveEnv[ruta]] = costo;
+      nuevos++;
+    });
+  }
+  Object.keys(info).forEach(function (id) {
+    const m = info[id];
+    if (m.envio === 0) return;                       // sin envío gratis: ya está en 0
+    m.envio = porSku[m.sku || id] || 0;
+  });
+  _cacheGuardar(cache);
+  paso('envios');
+
+  // 5.4 · Promociones por ítem, en paralelo.
+  // Acá estaba el grueso del tiempo: una llamada por publicación, en fila india.
+  const rutasPromo = ids.map(function (id) {
+    return '/seller-promotions/items/' + id + '?app_version=v2';
+  });
+  const resPromo = mlGetMuchos(rutasPromo);
+  paso('promos');
+
+  // 5.4b · Ventanas que solo viven en la campaña.
+  //
+  // Una oferta relámpago dura unas horas y su ventana NO baja a la fila del
+  // ítem: /seller-promotions/items/{id} devuelve la promo sin ninguna fecha.
+  // Está en el listado de ítems de la campaña, con hora exacta:
+  //
+  //   {"id":"MLA2800121362","start_date":"2026-08-31T00:00:00",
+  //    "finish_date":"2026-08-31T11:59:59","status":"pending","price":110000}
+  //
+  // Sin esto la app no puede saber cuándo la relámpago pasa a mandar en la
+  // vidriera, y al ser la más barata se ponía primera todo el tiempo.
+  //
+  // Solo se piden los tipos cuya ventana es por ítem. Las SMART no entran acá:
+  // su fecha es la de la campaña y ya está en la hoja Campanias.
+  const ventanas = {};
+  // Ojo con el limit: este endpoint rechaza cualquier valor de 50 o más
+  // ("limit must be lower than 50"), pero SIN el parámetro devuelve la tanda
+  // completa. Así que la primera vuelta va pelada y solo se pagina si hace
+  // falta, con searchAfter si lo ofrece y con offset si no.
+  camps.filter(function (c) { return VENTANA_POR_ITEM.indexOf(String(c.type)) >= 0; })
+    .forEach(function (c) {
+      var token = null, vistos = 0, total = null, vueltas = 0, lote = [];
+      do {
+        var ruta = '/seller-promotions/promotions/' + c.id + '/items?promotion_type=' +
+                   encodeURIComponent(c.type) + '&app_version=v2';
+        if (token)      ruta += '&searchAfter=' + encodeURIComponent(token);
+        else if (vistos) ruta += '&limit=49&offset=' + vistos;
+
+        var r;
+        try { r = mlGet(ruta); } catch (e) { Logger.log('ventanas ' + c.id + ': ' + e); break; }
+
+        lote = _arr(r);
+        lote.forEach(function (x) {
+          if (!x || !x.id) return;
+          if (!x.start_date && !x.finish_date) return;
+          ventanas[c.id + '|' + x.id] = [_fechaAR(x.start_date), _fechaAR(x.finish_date)];
+        });
+        vistos += lote.length;
+        if (r && r.paging && r.paging.total != null) total = r.paging.total;
+        token = (r && r.paging && (r.paging.searchAfter || r.paging.search_after)) || null;
+        vueltas++;
+      } while (lote.length && (token || (total != null && vistos < total)) && vueltas < 20);
+      Logger.log('  ' + c.type + ' ' + c.id + ': ' + vistos + ' ítems leídos');
+    });
+  Logger.log('ventanas por ítem completadas: ' + Object.keys(ventanas).length);
+  paso('ventanas');
+
   const filas = [];
   var errores = 0;
-  ids.forEach(function (id, n) {
-    var promos;
-    try { promos = _arr(mlGet('/seller-promotions/items/' + id + '?app_version=v2')); }
-    catch (err) { errores++; return; }
-    const m = info[id] || {};
+  ids.forEach(function (id) {
+    const ruta = '/seller-promotions/items/' + id + '?app_version=v2';
+    if (resPromo[ruta] === undefined) { errores++; return; }
+    const promos = _arr(resPromo[ruta]);
+    const m  = info[id] || {};
+    const cc = combos[m.cat + '|' + m.tipo] || {};
     promos.forEach(function (p) {
+      // Si la promo no trae fecha propia, se usa la ventana de la campaña.
+      const w = ventanas[String(p.id) + '|' + id] || ['', ''];
       filas.push([
         id, m.sku || '', m.titulo || '', m.precio || '', m.stock || '',
         m.tipo || '', m.cuotas || '', m.envioGratis ? 'SI' : 'NO', m.catalogo ? 'SI' : 'NO',
@@ -377,7 +613,8 @@ function sincronizarTodo() {
         p.seller_percentage != null ? p.seller_percentage : '',
         p.boosted_offer === true ? 'SI' : '',
         p.total_price_for_boosted_offer != null ? p.total_price_for_boosted_offer : '',
-        p.start_date || '', p.finish_date || '',
+        p.start_date  || w[0] || '',
+        p.finish_date || w[1] || '',
         // Ojo: no concatenar "min-max" en una celda. Sheets lo interpreta como
         // fecha ("5-22" -> 22 de mayo). Van en dos columnas numéricas.
         (p.stock && p.stock.min != null) ? p.stock.min : '',
@@ -386,12 +623,11 @@ function sincronizarTodo() {
         p.fixed_amount != null ? p.fixed_amount : '',
         p.fixed_percentage != null ? p.fixed_percentage : '',
         // Costos, para el "Recibís" del front
-        (combos[m.cat + '|' + m.tipo] || {}).pct  != null ? combos[m.cat + '|' + m.tipo].pct  : '',
-        (combos[m.cat + '|' + m.tipo] || {}).fijo != null ? combos[m.cat + '|' + m.tipo].fijo : '',
+        cc.pct  != null ? cc.pct  : '',
+        cc.fijo != null ? cc.fijo : '',
         m.envio != null ? m.envio : ''
       ]);
     });
-    if (n % 10 === 9) Utilities.sleep(250);
   });
 
   // precio_vidriera es el price que devuelve /items: cuando hay una promo activa
@@ -402,6 +638,7 @@ function sincronizarTodo() {
      'original_price','max_disc','min_disc','sugerido','meli_%','seller_%','boost','precio_boost',
      'inicio','fin','stock_min','stock_max','sub_type','monto_fijo','pct_fijo',
      'com_pct','com_fijo','envio_costo'], filas);
+  paso('escritura');
 
   // 5.5 · Histórico diario — alimenta el reloj de credibilidad
   const hoy = Utilities.formatDate(new Date(), TZ, 'yyyy-MM-dd');
@@ -430,7 +667,9 @@ function sincronizarTodo() {
   const res = {
     ok: true, cuando: new Date().toISOString(), publicaciones: ids.length,
     campanias: camps.length, filas: filas.length, errores: errores,
-    segundos: Math.round((Date.now() - t0) / 1000)
+    cacheUsado: golpes, cacheNuevo: nuevos,
+    segundos: Math.round((Date.now() - t0) / 1000),
+    etapas: marca
   };
   P.setProperty('ULTIMA_SYNC', JSON.stringify(res));
   Logger.log(JSON.stringify(res));
@@ -446,8 +685,10 @@ function leerSnapshot() {
   const ss = SpreadsheetApp.openById(SHEET_ID);
   const datos = _leerHoja(ss, 'Datos');
   const camps = _leerHoja(ss, 'Campanias');
-  const hist  = _leerHoja(ss, 'Historico');
-  const log   = _leerHoja(ss, 'Log').slice(-60);
+  // El Histórico crece 162 filas por día y el reloj solo mira los últimos días:
+  // leerlo entero hacía que cada carga fuera más lenta que la anterior.
+  const hist  = _leerUltimas(ss, 'Historico', 4000);
+  const log   = _leerUltimas(ss, 'Log', 80);
 
   // Reloj: días consecutivos sin oferta, del más reciente hacia atrás.
   const porItem = {};
@@ -471,6 +712,20 @@ function leerSnapshot() {
   };
 }
 
+/** Como _leerHoja pero solo las últimas n filas. */
+function _leerUltimas(ss, nombre, n) {
+  const sh = ss.getSheetByName(nombre);
+  if (!sh || sh.getLastRow() < 2) return [];
+  const ancho = sh.getLastColumn();
+  const cab   = sh.getRange(1, 1, 1, ancho).getValues()[0];
+  const total = sh.getLastRow() - 1;
+  const cuantas = Math.min(n, total);
+  const desde = 2 + total - cuantas;
+  return sh.getRange(desde, 1, cuantas, ancho).getValues().map(function (r) {
+    const o = {}; cab.forEach(function (c, i) { o[c] = r[i]; }); return o;
+  });
+}
+
 function _leerHoja(ss, nombre) {
   const sh = ss.getSheetByName(nombre);
   if (!sh || sh.getLastRow() < 2) return [];
@@ -484,6 +739,180 @@ function _leerHoja(ss, nombre) {
 /* ═══════════════════════════════════════════════════════════════════════════
    7 · ESCRITURA
    ═══════════════════════════════════════════════════════════════════════════ */
+
+/**
+ * Vuelve a leer UN ítem de Meli y actualiza solo sus filas en la hoja.
+ *
+ * Por qué existe: después de sumarse o salirse de una campaña, la app pedía el
+ * snapshot entero de nuevo — 1320 filas, el histórico y el log completos, todo
+ * serializado y bajado otra vez. Eso son varios segundos por click, y el ítem
+ * que cambió es uno solo. Esto refresca ese ítem con una llamada a Meli y una
+ * escritura acotada, y le devuelve al front las filas nuevas para que parche en
+ * memoria sin recargar nada.
+ *
+ * Devuelve las filas como objetos (mismas columnas que la hoja) o null si no
+ * pudo, en cuyo caso el front recarga como antes.
+ */
+function _refrescarItem(id) {
+  const ss = SpreadsheetApp.openById(SHEET_ID);
+  const sh = ss.getSheetByName('Datos');
+  if (!sh || sh.getLastRow() < 2) return null;
+
+  const ancho = sh.getLastColumn();
+  const col   = sh.getRange(2, 1, sh.getLastRow() - 1, 1).getValues();
+  var ini = -1, fin = -1;
+  for (var i = 0; i < col.length; i++) {
+    if (String(col[i][0]) === String(id)) { if (ini < 0) ini = i; fin = i; }
+  }
+  if (ini < 0) return null;
+
+  const viejas = sh.getRange(2 + ini, 1, fin - ini + 1, ancho).getValues();
+  const base   = viejas[0];      // columnas del ítem: título, sku, costos, etc.
+
+  var promos;
+  try { promos = _arr(mlGet('/seller-promotions/items/' + id + '?app_version=v2')); }
+  catch (e) { Logger.log('refrescar ' + id + ': ' + e); return null; }
+
+  // La ventana de una relámpago no baja al ítem: se pide solo si falta.
+  const ventanas = {};
+  promos.forEach(function (p) {
+    if (p.start_date || VENTANA_POR_ITEM.indexOf(String(p.type)) < 0) return;
+    try {
+      _arr(mlGet('/seller-promotions/promotions/' + p.id + '/items?promotion_type=' +
+                 encodeURIComponent(p.type) + '&app_version=v2')).forEach(function (x) {
+        if (x && String(x.id) === String(id) && (x.start_date || x.finish_date))
+          ventanas[String(p.id)] = [_fechaAR(x.start_date), _fechaAR(x.finish_date)];
+      });
+    } catch (e) {}
+  });
+
+  const nuevas = promos.map(function (p) {
+    return _filaPromo(base, p, ventanas[String(p.id)] || ['', '']);
+  });
+
+  // Normalmente la cantidad de promos no cambia —sumarse solo mueve el status—
+  // así que casi siempre es una sola escritura en el mismo lugar.
+  if (nuevas.length === viejas.length) {
+    sh.getRange(2 + ini, 1, nuevas.length, ancho).setValues(nuevas);
+  } else if (nuevas.length < viejas.length) {
+    if (nuevas.length) sh.getRange(2 + ini, 1, nuevas.length, ancho).setValues(nuevas);
+    sh.deleteRows(2 + ini + nuevas.length, viejas.length - nuevas.length);
+  } else {
+    sh.insertRowsAfter(2 + fin, nuevas.length - viejas.length);
+    sh.getRange(2 + ini, 1, nuevas.length, ancho).setValues(nuevas);
+  }
+
+  const cab = sh.getRange(1, 1, 1, ancho).getValues()[0];
+  return nuevas.map(function (r) {
+    const o = {}; cab.forEach(function (c, i) { o[c] = r[i]; }); return o;
+  });
+}
+
+/**
+ * Refresca TODAS las publicaciones de un SKU de una vez.
+ *
+ * El sync completo recorre las 162 publicaciones de la cuenta y tarda ~15 s.
+ * Pero trabajando de a un producto, las que importan son las 10 de ese SKU:
+ * esto las pide en paralelo y reescribe solo sus filas. Un segundo largo.
+ *
+ * Los bloques se reescriben de abajo hacia arriba: si una publicación cambia de
+ * cantidad de promos, las filas de abajo se corren, y hacerlo al revés
+ * invalidaría los índices que ya calculamos.
+ */
+function refrescarSku(sku) {
+  const t0 = Date.now();
+  const ss = SpreadsheetApp.openById(SHEET_ID);
+  const sh = ss.getSheetByName('Datos');
+  if (!sh || sh.getLastRow() < 2) return { ok: false, error: 'sin datos' };
+
+  const ancho = sh.getLastColumn();
+  const cab   = sh.getRange(1, 1, 1, ancho).getValues()[0];
+  const todo  = sh.getRange(2, 1, sh.getLastRow() - 1, ancho).getValues();
+  const cSku  = cab.indexOf('sku');
+
+  // Bloques contiguos por publicación, en orden de aparición.
+  const bloques = [];
+  for (var i = 0; i < todo.length; i++) {
+    if (String(todo[i][cSku]) !== String(sku)) continue;
+    const id = String(todo[i][0]);
+    const ult = bloques[bloques.length - 1];
+    if (ult && ult.id === id) ult.fin = i;
+    else bloques.push({ id: id, ini: i, fin: i, base: todo[i] });
+  }
+  if (!bloques.length) return { ok: false, error: 'SKU sin publicaciones' };
+
+  // Todas las promos, de una.
+  const rutas = bloques.map(function (b) {
+    return '/seller-promotions/items/' + b.id + '?app_version=v2';
+  });
+  const res = mlGetMuchos(rutas);
+
+  // Las ventanas que falten (relámpago), una llamada por campaña, no por ítem.
+  const ventanas = {}, pendientes = {};
+  bloques.forEach(function (b) {
+    _arr(res['/seller-promotions/items/' + b.id + '?app_version=v2']).forEach(function (p) {
+      if (p.start_date || VENTANA_POR_ITEM.indexOf(String(p.type)) < 0) return;
+      pendientes[p.id] = p.type;
+    });
+  });
+  Object.keys(pendientes).forEach(function (pid) {
+    try {
+      _arr(mlGet('/seller-promotions/promotions/' + pid + '/items?promotion_type=' +
+                 encodeURIComponent(pendientes[pid]) + '&app_version=v2')).forEach(function (x) {
+        if (x && (x.start_date || x.finish_date))
+          ventanas[pid + '|' + x.id] = [_fechaAR(x.start_date), _fechaAR(x.finish_date)];
+      });
+    } catch (e) {}
+  });
+
+  const salida = [];
+  for (var k = bloques.length - 1; k >= 0; k--) {
+    const b = bloques[k];
+    const promos = _arr(res['/seller-promotions/items/' + b.id + '?app_version=v2']);
+    if (!promos.length) continue;                    // no vino: se deja como está
+    const nuevas = promos.map(function (p) {
+      return _filaPromo(b.base, p, ventanas[String(p.id) + '|' + b.id] || ['', '']);
+    });
+    const viejas = b.fin - b.ini + 1;
+    if (nuevas.length === viejas) {
+      sh.getRange(2 + b.ini, 1, nuevas.length, ancho).setValues(nuevas);
+    } else if (nuevas.length < viejas) {
+      sh.getRange(2 + b.ini, 1, nuevas.length, ancho).setValues(nuevas);
+      sh.deleteRows(2 + b.ini + nuevas.length, viejas - nuevas.length);
+    } else {
+      sh.insertRowsAfter(2 + b.fin, nuevas.length - viejas);
+      sh.getRange(2 + b.ini, 1, nuevas.length, ancho).setValues(nuevas);
+    }
+    nuevas.forEach(function (r) {
+      const o = {}; cab.forEach(function (c, i) { o[c] = r[i]; }); salida.push(o);
+    });
+  }
+  return { ok: true, sku: String(sku), publicaciones: bloques.length,
+           filas: salida, segundos: Math.round((Date.now() - t0) / 1000) };
+}
+
+/** Arma una fila de Datos: columnas del ítem de `base`, columnas de promo de `p`. */
+function _filaPromo(base, p, w) {
+  const f = base.slice();
+  f[11] = p.type || ''; f[12] = p.id || ''; f[13] = p.name || ''; f[14] = p.status || '';
+  f[15] = p.price != null ? p.price : '';
+  f[16] = p.original_price != null ? p.original_price : '';
+  f[17] = p.max_discounted_price != null ? p.max_discounted_price : '';
+  f[18] = p.min_discounted_price != null ? p.min_discounted_price : '';
+  f[19] = p.suggested_discounted_price != null ? p.suggested_discounted_price : '';
+  f[20] = p.meli_percentage   != null ? p.meli_percentage   : '';
+  f[21] = p.seller_percentage != null ? p.seller_percentage : '';
+  f[22] = p.boosted_offer === true ? 'SI' : '';
+  f[23] = p.total_price_for_boosted_offer != null ? p.total_price_for_boosted_offer : '';
+  f[24] = p.start_date  || w[0] || '';
+  f[25] = p.finish_date || w[1] || '';
+  f[26] = (p.stock && p.stock.min != null) ? p.stock.min : '';
+  f[27] = (p.stock && p.stock.max != null) ? p.stock.max : '';
+  f[28] = p.sub_type || '';
+  f[29] = p.fixed_amount     != null ? p.fixed_amount     : '';
+  f[30] = p.fixed_percentage != null ? p.fixed_percentage : '';
+  return f;
+}
 
 function sumarAPromo(a) {
   const tipo = a.promotion_type;
@@ -507,7 +936,7 @@ function sumarAPromo(a) {
   _log('sumar', a.item_id, tipo + ' ' + (a.promotion_id || '') + ' @ ' + (a.deal_price || 'acepta'),
        r.ok ? 'OK' : 'ERROR ' + r.code + ' ' + r.texto);
   if (!r.ok) throw new Error(_mensajeError(r));
-  return r.body;
+  return { ok: true, body: r.body, filas: _refrescarItem(a.item_id) };
 }
 
 function salirDePromo(a) {
@@ -517,7 +946,7 @@ function salirDePromo(a) {
   _log('salir', a.item_id, a.promotion_type + ' ' + (a.promotion_id || ''),
        r.ok ? 'OK' : 'ERROR ' + r.code + ' ' + r.texto);
   if (!r.ok) throw new Error(_mensajeError(r));
-  return { ok: true };
+  return { ok: true, filas: _refrescarItem(a.item_id) };
 }
 
 function ejecutarLote(acciones) {

@@ -71,6 +71,16 @@ main{min-width:0;display:flex;flex-direction:column}
 .frescura b{font-family:"JetBrains Mono";font-weight:600}
 .frescura.vieja{color:var(--warn)}
 .frescura.muyvieja{color:var(--bad);font-weight:600}
+/* Barra de progreso arriba de todo: se ve aunque el botón que disparó la
+   operación haya quedado fuera de pantalla. */
+.barra{position:fixed;top:0;left:0;right:0;height:3px;z-index:100;pointer-events:none}
+.barra i{display:block;height:100%;background:var(--acc);width:0;transition:width .25s linear;
+  box-shadow:0 0 8px var(--acc)}
+.pill{display:inline-flex;gap:7px;align-items:center;background:var(--acc2);color:var(--acc);
+  border-radius:20px;padding:5px 12px;font:600 12px "Bricolage Grotesque";white-space:nowrap}
+.pill b{font-family:"JetBrains Mono";font-variant-numeric:tabular-nums;min-width:34px;text-align:right}
+.pill small{font:400 11px "JetBrains Mono";opacity:.75}
+[hidden]{display:none!important}
 .frescura .ver{font:400 10px "JetBrains Mono";color:var(--ink3);background:var(--panel3);
   padding:2px 5px;border-radius:4px;margin-left:4px}
 .wrap{padding:20px 22px 60px;display:flex;flex-direction:column;gap:16px}
@@ -117,7 +127,9 @@ input:focus-visible,select:focus-visible,.btn:focus-visible,.nav:focus-visible{o
   display:flex;gap:18px;align-items:flex-start;flex-wrap:wrap;box-shadow:var(--shadow)}
 .hero img{width:64px;height:64px;object-fit:contain;border-radius:6px;background:var(--panel2);flex:none}
 .hero .txt{flex:1;min-width:200px;display:flex;flex-direction:column;gap:4px}
-.hero .sk{font:600 12px "JetBrains Mono";letter-spacing:.1em;color:var(--acc)}
+.hero .sk{font:600 12px "JetBrains Mono";letter-spacing:.1em;color:var(--acc);
+  display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.hero .sk .btn{letter-spacing:0;font-family:inherit}
 .hero h2{font-size:19px;font-weight:700;line-height:1.2}
 .hero .stats{display:flex;gap:20px;flex-wrap:wrap;margin-top:6px}
 .hero .stats div{display:flex;flex-direction:column}
@@ -253,8 +265,10 @@ dialog::backdrop{background:rgba(10,18,16,.55)}
   </aside>
 
   <main>
+    <div class="barra" id="barra"><i></i></div>
     <div class="bar">
       <h1 id="tit">Por SKU</h1>
+      <span class="pill" id="trabajando" hidden></span>
       <span id="frescura" class="frescura"></span>
       <button class="btn" id="recargar">Recargar</button>
       <button class="btn p" id="sync">Sincronizar con Meli</button>
@@ -296,7 +310,7 @@ const S = {
 /* Subilo cada vez que cambie el archivo. Sirve para saber, mirando la app,
    si el navegador está sirviendo la versión nueva o una cacheada: GitHub Pages
    guarda el index.html un rato y es fácil quedarse con el viejo sin notarlo. */
-const VERSION = '2026.08.28-7';
+const VERSION = '2026.08.28-10';
 const VENTANA = 7;
 const $  = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
@@ -735,7 +749,9 @@ function heroSku(g) {
   return `<div class="hero">
     ${g.foto ? `<img src="${esc(g.foto)}" alt="" loading="lazy">` : ''}
     <div class="txt">
-      <span class="sk">SKU ${esc(g.sku)}</span>
+      <span class="sk">SKU ${esc(g.sku)}
+        <button class="btn xs" id="refSku" title="Vuelve a pedirle a Meli solo las publicaciones de este SKU. Mucho más rápido que sincronizar la cuenta entera.">actualizar este SKU</button>
+      </span>
       <h2>${esc(g.titulo)}</h2>
       <div class="stats">
         <div><span>Publicaciones</span><b>${g.pubs.length}</b></div>
@@ -1067,6 +1083,20 @@ function engancharBuscador() {
 }
 
 function engancharAcciones() {
+  // Traer de Meli solo este SKU: ~1 s contra los ~15 del sync completo.
+  const rs = $('#refSku');
+  if (rs) rs.onclick = async () => {
+    const sku = S.skuSel;
+    const fin = ocupar(rs, 'Actualizando', 'sku');
+    try {
+      const r = await api('sku', { sku: sku });
+      const seg = fin();
+      const ids = new Set((r.filas || []).map(x => String(x.item_id)));
+      S.data.datos = S.data.datos.filter(x => !ids.has(String(x.item_id))).concat(r.filas || []);
+      procesar(S.data); render();
+      toast(r.publicaciones + ' publicaciones al día · ' + seg + 's', 'ok');
+    } catch (e) { fin(false); toast(e.message, 'bad'); }
+  };
   // Desplegable de publicación: se acuerda de la última que miraste por SKU.
   const s = $('#selPub');
   if (s) {
@@ -1099,8 +1129,8 @@ function engancharAcciones() {
   $$('[data-del]').forEach(b => b.onclick = async () => {
     const [id,tipo,pid] = b.dataset.del.split('|');
     if (!confirm('¿Sacar esta publicación de ' + tipo + '?\n\nOjo: el reloj de credibilidad de 7 días arranca recién ahora.')) return;
-    try { await api('salir',{item_id:id, promotion_type:tipo, promotion_id:pid||undefined});
-      toast('Salió de ' + tipo,'ok'); cargar(); }
+    try { await escribir('salir', {item_id:id, promotion_type:tipo, promotion_id:pid||undefined},
+                         'Salió de ' + tipo, b); }
     catch(e){ toast(e.message,'bad'); }
   });
 }
@@ -1496,13 +1526,11 @@ $('#sOk').onclick = async () => {
     if (d < 5 || d >= 80) { toast('El descuento tiene que estar entre 5% y 80%','bad'); return; }
     const ini = ($('#fIni')||{}).value, f = ($('#fFin')||{}).value;
     if ((new Date(f) - new Date(ini))/864e5 > 14) { toast('El máximo son 14 días','bad'); return; }
-    $('#sOk').disabled = true; $('#sOk').innerHTML = '<span class="spin"></span> Creando';
     try {
-      await api('sumar', { item_id: it.id, promotion_type:'PRICE_DISCOUNT', deal_price: v,
-        start_date: ini + 'T00:00:00', finish_date: f + 'T00:00:00' });
-      $('#dSumar').close(); toast('Descuento creado', 'ok'); cargar();
+      await escribir('sumar', { item_id: it.id, promotion_type:'PRICE_DISCOUNT', deal_price: v,
+        start_date: ini + 'T00:00:00', finish_date: f + 'T00:00:00' }, 'Descuento creado', $('#sOk'));
+      $('#dSumar').close();
     } catch (e) { toast(e.message, 'bad'); }
-    finally { $('#sOk').disabled = false; $('#sOk').textContent = 'Confirmar'; }
     return;
   }
 
@@ -1515,12 +1543,80 @@ $('#sOk').onclick = async () => {
     body.deal_price = v;
     if (p.tipo === 'LIGHTNING') body.stock = +($('#fStock')||{}).value || 1;
   }
-  $('#sOk').disabled = true; $('#sOk').innerHTML = '<span class="spin"></span> Enviando';
-  try { await api('sumar', body); $('#dSumar').close();
-    toast('Sumado a ' + nombrePromo(p), 'ok'); cargar(); }
+  try { await escribir('sumar', body, 'Sumado a ' + nombrePromo(p), $('#sOk'));
+    $('#dSumar').close(); }
   catch (e) { toast(e.message, 'bad'); }
-  finally { $('#sOk').disabled = false; $('#sOk').textContent = 'Confirmar'; }
 };
+
+/* ═══════════════════════════════════════════════════════════
+   INDICADOR DE TRABAJO
+   Cualquier cosa que salga a la red pasa por acá: el botón muestra el
+   cronómetro, arriba corre una barra, y se recuerda cuánto tardó la última vez
+   para poder decir "12,4s de ~14s" en vez de dejarte adivinando.
+   ═══════════════════════════════════════════════════════════ */
+const DURACIONES = JSON.parse(localStorage.getItem('cdp_dur') || '{}');
+
+function ocupar(el, etiqueta, clave) {
+  const t0 = Date.now();
+  const previo = DURACIONES[clave] || null;
+  const original = el ? el.innerHTML : null;
+  if (el) el.disabled = true;
+  const barra = $('#barra i'), pill = $('#trabajando');
+  if (pill) pill.hidden = false;
+
+  const pinta = () => {
+    const s = (Date.now() - t0) / 1000;
+    const txt = (s < 10 ? s.toFixed(1) : Math.round(s)) + 's';
+    if (el) el.innerHTML = '<span class="spin"></span> ' + etiqueta + ' · ' + txt;
+    if (pill) pill.innerHTML = '<span class="spin"></span> ' + etiqueta +
+      ' · <b>' + txt + '</b>' + (previo ? ' <small>de ~' + previo + 's</small>' : '');
+    // Con referencia, la barra va proporcional; sin ella, avanza y frena en 90%
+    // para no mentir que terminó.
+    if (barra) barra.style.width = (previo ? Math.min(97, (s / previo) * 100)
+                                           : Math.min(90, s * 14)) + '%';
+  };
+  const timer = setInterval(pinta, 120);
+  pinta();
+
+  return function fin(ok) {
+    clearInterval(timer);
+    const s = Math.max(1, Math.round((Date.now() - t0) / 1000));
+    if (ok !== false) { DURACIONES[clave] = s; localStorage.setItem('cdp_dur', JSON.stringify(DURACIONES)); }
+    if (barra) { barra.style.width = '100%'; setTimeout(() => { barra.style.width = '0'; }, 400); }
+    if (pill) pill.hidden = true;
+    if (el) { el.disabled = false; el.innerHTML = original; }
+    return s;
+  };
+}
+
+/**
+ * Aplica el resultado de una escritura sin volver a bajar todo.
+ *
+ * Antes, cada "Sumar" o "Salir" terminaba en cargar(): el backend volvía a leer
+ * las 1320 filas de Datos, el histórico y el log enteros, los serializaba y los
+ * mandaba de nuevo. Varios segundos, para un ítem que cambió.
+ *
+ * Ahora el backend devuelve las filas frescas de ESE ítem y acá se reemplazan
+ * en memoria. La red se usa una sola vez, para la escritura.
+ */
+function parchar(itemId, filas) {
+  if (!S.data || !filas || !filas.length) return false;
+  S.data.datos = S.data.datos.filter(r => String(r.item_id) !== String(itemId)).concat(filas);
+  procesar(S.data);
+  render();
+  return true;
+}
+
+/** Escribe en Meli y refresca solo lo que cambió. */
+async function escribir(accion, body, mensaje, boton) {
+  const fin = ocupar(boton, accion === 'salir' ? 'Saliendo' : 'Sumando', 'escritura');
+  try {
+    const r = await api(accion, body);
+    const seg = fin();
+    if (!parchar(body.item_id, r && r.filas)) cargar();
+    toast(mensaje + ' · ' + seg + 's', 'ok');
+  } catch (e) { fin(false); throw e; }
+}
 
 /**
  * Antigüedad del dato, arriba de todo.
@@ -1553,7 +1649,7 @@ function pintarFrescura(u) {
 /* ═══ carga ═══ */
 async function cargar() {
   if (!S.url || !S.key) { render(); return; }
-  $('#recargar').innerHTML = '<span class="spin"></span>';
+  const finCarga = ocupar($('#recargar'), 'Leyendo', 'datos');
   try {
     procesar(await api('datos'));
     const u = S.data.ultimaSync || {};
@@ -1563,15 +1659,15 @@ async function cargar() {
       : 'Conectado, sin sincronizar';
     pintarFrescura(u);
   } catch (e) { toast(e.message,'bad'); }
-  finally { $('#recargar').textContent = 'Recargar'; render(); }
+  finally { finCarga(); render(); }
 }
 $('#sync').onclick = async () => {
-  const b = $('#sync'); b.disabled = true; b.innerHTML = '<span class="spin"></span> Sincronizando';
+  const fin = ocupar($('#sync'), 'Sincronizando', 'sync');
   try { const r = await api('sync');
-    toast(r.publicaciones + ' publicaciones y ' + r.filas + ' promociones en ' + r.segundos + 's','ok');
+    const seg = fin();
+    toast(r.publicaciones + ' publicaciones y ' + r.filas + ' promociones · ' + seg + 's','ok');
     await cargar(); }
-  catch (e) { toast(e.message,'bad'); }
-  finally { b.disabled = false; b.textContent = 'Sincronizar con Meli'; }
+  catch (e) { fin(false); toast(e.message,'bad'); }
 };
 $('#recargar').onclick = cargar;
 
