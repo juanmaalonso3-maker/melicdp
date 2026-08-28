@@ -160,26 +160,20 @@ tbody tr:last-child td{border-bottom:0}
 .pub-h .sep b{font-family:"JetBrains Mono";font-variant-numeric:tabular-nums}
 .conds{display:flex;gap:5px;flex-wrap:wrap}
 
-/* ── familia: la publicación cabecera + la flechita con las otras cuotas ── */
-.fam{display:flex;flex-direction:column}
-.fam>.pub.cab{border-radius:var(--r) var(--r) 0 0}
-.fam-mas{border:1px solid var(--line);border-top:none;border-radius:0 0 var(--r) var(--r);
-  background:var(--panel2);overflow:hidden;box-shadow:var(--shadow)}
-.fam.escat .fam-mas{border-color:var(--acc)}
-.fam-mas>summary{list-style:none;cursor:pointer;display:flex;gap:10px;align-items:center;flex-wrap:wrap;
-  padding:11px 16px;font-size:12.5px;color:var(--ink2);user-select:none}
-.fam-mas>summary::-webkit-details-marker{display:none}
-.fam-mas>summary:hover{background:var(--panel3)}
-.fam-mas .fl{font:700 18px/1 "Bricolage Grotesque";color:var(--acc);display:inline-block;
-  transition:transform .15s;width:11px}
-.fam-mas[open] .fl{transform:rotate(90deg)}
-.fam-mas summary b{font-family:"Bricolage Grotesque";font-weight:700;font-size:13px;color:var(--ink)}
-.fam-mas .mini{font:400 11px "JetBrains Mono";color:var(--ink3)}
-.fam-mas .cierra{margin-left:auto;font-size:11.5px;color:var(--ink3)}
-.fam-mas[open] .abre{display:none}
-.fam-mas:not([open]) .cerra{display:none}
-.fam-b{display:flex;flex-direction:column;gap:12px;padding:2px 12px 13px}
-.fam-b .pub{box-shadow:none}
+/* ── desplegable para elegir qué publicación se muestra ── */
+.selpub{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);
+  padding:11px 15px;display:flex;gap:11px;align-items:center;flex-wrap:wrap;box-shadow:var(--shadow)}
+.selpub label[for]{font:600 10.5px "JetBrains Mono";letter-spacing:.09em;text-transform:uppercase;color:var(--ink3)}
+.selpub select{flex:1;min-width:270px;max-width:640px;background:var(--panel2);color:var(--ink);
+  border:1px solid var(--line2);border-radius:6px;padding:8px 11px;font-family:"JetBrains Mono";
+  font-size:12.5px;cursor:pointer}
+.selpub select:focus{outline:2px solid var(--acc);outline-offset:1px}
+.selpub .nav-pub{display:flex;gap:4px}
+.selpub .nav-pub .btn{font-family:"Bricolage Grotesque";font-weight:700;font-size:15px;line-height:1;padding:5px 10px}
+.selpub .hint2{font-size:11.5px;color:var(--ink3)}
+.selpub .todas{margin-left:auto;display:flex;gap:6px;align-items:center;font-size:12px;
+  color:var(--ink2);cursor:pointer;user-select:none}
+.selpub .todas input{accent-color:var(--acc);cursor:pointer}
 .reloj{display:flex;align-items:center;gap:7px;font-size:11.5px;color:var(--ink2)}
 .prog{height:5px;width:64px;border-radius:3px;background:var(--panel3);overflow:hidden}
 .prog i{display:block;height:100%;background:var(--acc)}
@@ -301,7 +295,8 @@ const num = n => (n === '' || n == null || isNaN(n)) ? '—' :
 const pes = n => (n === '' || n == null || isNaN(n)) ? '—' : '$ ' + num(n);
 const pct = n => (n == null || isNaN(n)) ? '—' : n.toFixed(1).replace('.',',') + '%';
 const fecha = s => { if(!s) return '—'; const d = new Date(s);
-  return isNaN(d) ? '—' : d.toLocaleDateString('es-AR',{day:'2-digit',month:'short'}); };
+  return isNaN(d) ? '—' : d.toLocaleDateString('es-AR',
+    {day:'2-digit', month:'short', timeZone:'America/Argentina/Buenos_Aires'}); };
 
 /** Los listing_type de Meli en castellano, como los llamás vos. */
 const TIPOS = {
@@ -309,6 +304,18 @@ const TIPOS = {
   silver:'Plata', bronze:'Bronce', free:'Gratuita'
 };
 const tipoLabel = t => TIPOS[t] || t || '—';
+
+/** Meli devuelve varias promociones SIN nombre: la relámpago y el descuento
+ *  individual vienen con name vacío, y quedaban en pantalla como "LIGHTNING" o
+ *  "PRICE_DISCOUNT". Estos son los nombres con los que las muestra la interfaz. */
+const NOMBRE_TIPO = {
+  LIGHTNING:'⚡ Oferta relámpago', PRICE_DISCOUNT:'Descuento individual',
+  DOD:'Oferta del día', SMART:'Oferta inteligente', DEAL:'Campaña de Mercado Libre',
+  PRICE_MATCHING:'Igualación de precio', PRE_NEGOTIATED:'Acuerdo pre-negociado',
+  VOLUME:'Descuento por volumen', UNHEALTHY_STOCK:'Liquidación de stock',
+  MARKETPLACE_CAMPAIGN:'Campaña de marketplace', SELLER_COUPON_CAMPAIGN:'Cupón'
+};
+const nombrePromo = x => x.promo || NOMBRE_TIPO[x.tipo] || x.tipo || '—';
 
 /** "3x_campaign" → "3 cuotas" · vacío → "Contado" */
 /** Número tolerante: '', null, undefined o basura → null. Evita los NaN en pantalla
@@ -366,9 +373,18 @@ const ACUERDA_ACEPTA = ['PRE_NEGOTIATED','UNHEALTHY_STOCK'];
 
    Por eso la app decía "activa" donde el seller center dice "programada".
    ═══════════════════════════════════════════════════════════ */
-const HOY = (() => { const d = new Date(); d.setHours(0,0,0,0); return d.getTime(); })();
-const dIni = x => { const d = new Date(x.inicio); return isNaN(d) ? -Infinity : d.setHours(0,0,0,0); };
-const dFin = x => { const d = new Date(x.fin);    return isNaN(d) ?  Infinity : d.setHours(23,59,59,999); };
+/* Meli mezcla husos horarios: las fechas del ítem vienen en -03:00
+   (2026-08-31T00:00:00-03:00) y las de la campaña en UTC
+   (2026-08-31T03:00:00Z). Son el mismo instante, pero comparados crudos dan
+   días distintos. Todo se normaliza al día calendario de Buenos Aires, que es
+   el que ves en el seller center. Queda como "2026-08-31": se compara como
+   texto y ordena bien. */
+const TZ_AR = 'America/Argentina/Buenos_Aires';
+const _fdia = new Intl.DateTimeFormat('en-CA', {timeZone:TZ_AR, year:'numeric', month:'2-digit', day:'2-digit'});
+const diaAR = v => { const d = new Date(v); return isNaN(d) ? null : _fdia.format(d); };
+const HOY  = diaAR(new Date());
+const dIni = x => diaAR(x.inicio) || '0000-00-00';
+const dFin = x => diaAR(x.fin)    || '9999-99-99';
 
 function resolverVigencia(it) {
   // Lo comprometido: aceptado y con fecha. Las propuestas todavía no cuentan.
@@ -377,7 +393,7 @@ function resolverVigencia(it) {
   comp.forEach(x => { x.vigencia = null; });
 
   const corriendo = comp.filter(x => dIni(x) <= HOY && dFin(x) >= HOY);
-  const futuras   = comp.filter(x => dIni(x) >  HOY).sort((a,b) => dIni(a) - dIni(b));
+  const futuras   = comp.filter(x => dIni(x) >  HOY).sort((a,b) => dIni(a).localeCompare(dIni(b)));
   const vencidas  = comp.filter(x => dFin(x) <  HOY);
 
   // Entre las que comparten fecha gana la más barata.
@@ -397,7 +413,7 @@ function resolverVigencia(it) {
   it.vencidas = vencidas;
   it.proxima  = futuras[0] || null;
   // Hasta cuándo se sostiene el precio de hoy.
-  it.hasta = gana && dFin(gana) !== Infinity ? gana.fin : null;
+  it.hasta = gana && gana.fin ? gana.fin : null;
 }
 
 /** "3x_campaign" → 3 · contado → 0. Sirve para ordenar las opciones. */
@@ -419,8 +435,13 @@ function armarFamilia(pubs) {
 
 function procesar(d) {
   S.data = d; S.camps = d.campanias || []; S.reloj = d.reloj || {}; S.log = d.log || [];
-  const vence = {};
-  S.camps.forEach(c => { vence[c.promo_id] = c.vence_aceptacion; });
+  const vence = {}, fechaCamp = {};
+  S.camps.forEach(c => {
+    vence[c.promo_id] = c.vence_aceptacion;
+    // Las campañas automáticas (SMART, PRICE_MATCHING) no traen fecha en la fila
+    // del ítem: la fecha vive en la campaña. Se usa como respaldo.
+    if (c.inicio || c.fin) fechaCamp[c.promo_id] = {inicio: c.inicio, fin: c.fin};
+  });
 
   S.filas = (d.datos || []).map(r => {
     const lista = nn(r.original_price) || nn(r.precio_vidriera) || nn(r.precio_lista) || 0;
@@ -435,7 +456,11 @@ function procesar(d) {
       precio: pp && pp > 0 ? pp : null, max, min, sug,
       meliPct: nn(r['meli_%']), sellerPct: nn(r['seller_%']),
       boost:r.boost==='SI', precioBoost: nn(r.precio_boost),
-      inicio:r.inicio, fin:r.fin, vence: vence[String(r.promo_id||'')] || '',
+      inicio: r.inicio || (fechaCamp[String(r.promo_id||'')]||{}).inicio || '',
+      fin:    r.fin    || (fechaCamp[String(r.promo_id||'')]||{}).fin    || '',
+      fechaDeCamp: !r.inicio && !!(fechaCamp[String(r.promo_id||'')]||{}).inicio,
+      offerId: String(r.offer_id||''),
+      vence: vence[String(r.promo_id||'')] || '',
       stockMin: nn(r.stock_min), stockMax: nn(r.stock_max),
       subType:r.sub_type||'', montoFijo: nn(r.monto_fijo), pctFijo: nn(r.pct_fijo),
       pisoPct: (max && lista) ? (1 - max/lista)*100 : null,
@@ -582,7 +607,8 @@ function vSku() {
     + leyenda()
     + heroSku(g)
     + matrizSku(g)
-    + bloqueFamilia(g)
+    + selectorPub(g)
+    + bloquesPub(g)
     + cuponesSku(g);
 
   engancharBuscador();
@@ -620,13 +646,21 @@ function leyenda() {
           <span class="chip mut">vencida</span> su ventana ya pasó.
           Debajo de cada chip está el estado literal de la API, por si querés cruzarlo.</span></div>
       </div>
-      <div class="ley-n"><b>Por qué acá dice “vigente” y en el seller center “programada”.</b>
-        La API marca <code>started</code> a todo lo que aceptaste y ya arrancó, pero en la publicación se ve
-        <b>un solo precio</b>. La regla de la CDP: si dos tarjetas <b>comparten fechas</b>, manda la del
-        <b>precio más bajo</b> y la otra queda tapada; si <b>no</b> se pisan —una termina el 31/08 y la otra
-        arranca el 31/08— corre la primera hasta que se vence y recién ahí entra la segunda, que hasta ese
-        día es programada. La app ahora resuelve eso y te dice, arriba de cada tabla, cuál manda hoy,
-        hasta cuándo, y cuál toma la posta.</div>
+      <div class="ley-n"><b>Cómo se traduce al vocabulario del seller center.</b>
+        Meli usa solo dos palabras: <b>ACTIVA</b> para la que manda, y <b>PROGRAMADA</b> para todo el resto
+        que aceptaste — no distingue si está corriendo tapada por una más barata o si todavía no arrancó.
+        Acá se separan esos dos casos porque se resuelven distinto: a una <span class="chip warn">tapada</span>
+        le podés subir el precio o salirte sin que cambie nada en la vidriera; a una
+        <span class="chip warn">programada</span> le queda una fecha por delante.
+        La regla: si dos tarjetas <b>comparten fechas</b>, manda la del <b>precio más bajo</b>; si <b>no</b>
+        se pisan —una termina el 31/08 y la otra arranca el 31/08— corre la primera hasta que se vence.</div>
+      <div class="ley-n"><b>De dónde salen las fechas.</b>
+        Las campañas <code>DEAL</code> y los cupones traen fecha en la fila de la publicación. Las
+        <code>SMART</code> (Descuentazos, Potencia tus ventas, Ofertas Compartidas) <b>no</b>: la API las
+        devuelve sin fecha y hay que buscarla en la campaña. La app hace ese cruce y lo aclara con
+        “fecha de la campaña”. Además normaliza el huso: Meli manda unas en hora argentina y otras en UTC,
+        y comparadas crudas dan días distintos. La <b>relámpago no tiene fecha</b> y no es un error —
+        la ventana se define recién cuando entrás.</div>
       <div class="ley-n"><b>La regla del 5% (confirmada en la capacitación de Meli).</b>
         Para que el algoritmo valide el descuento como real, el precio de oferta tiene que ser
         <b>al menos 5% menor que el precio más bajo de los últimos ${VENTANA} días</b>. Se consideran todas
@@ -673,7 +707,7 @@ function matrizSku(g) {
   const cols = g.campanias;
   const cab = cols.map(c => {
     const d = diasPara(c.vence);
-    return `<th class="c">${esc((c.nombre || c.tipo).slice(0,20))}
+    return `<th class="c">${esc((c.nombre || NOMBRE_TIPO[c.tipo] || c.tipo).slice(0,20))}
       <div style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--ink3);margin-top:3px">
         ${esc(c.tipo.toLowerCase())}${d!=null ? ` · ${d<0?'vencida':d+'d'}` : ''}</div></th>`;
   }).join('');
@@ -740,31 +774,54 @@ function estadoDe(x) {
   return ['acc','disponible','Te invitaron y podés entrar cuando quieras.'];
 }
 
-/* ═══ familia: cabecera + flechita con las otras opciones de cuota ═══ */
-const FAM_ABIERTAS = new Set(JSON.parse(localStorage.getItem('cdp_fam') || '[]'));
+/* ═══════════════════════════════════════════════════════════
+   SELECTOR DE PUBLICACIÓN
+   Con 10 publicaciones por SKU, apilarlas todas es ilegible. Se elige una
+   en el desplegable y se muestra solo esa. El Panorama de arriba sigue
+   dando la foto completa.
+   ═══════════════════════════════════════════════════════════ */
+const etiquetaPub = p => [
+  cuotasLabel(p.cuotas),
+  tipoLabel(p.listingType),
+  p.catalogo ? '★ catálogo' : 'propia',
+  pes(p.lista),
+  p.vigente ? 'con oferta' : p.proxima ? 'arranca ' + fecha(p.proxima.inicio) : 'SIN OFERTA'
+].join(' · ');
 
-function bloqueFamilia(g) {
-  const { cabeza, hijos } = g.familia;
-  if (!hijos.length) return bloquePub(cabeza, g);
+function pubElegida(g) {
+  const guardado = localStorage.getItem('cdp_pub_' + g.sku);
+  return g.pubs.find(p => p.id === guardado) || g.familia.cabeza;
+}
 
-  const conOferta = hijos.filter(h => h.vigente).length;
-  const sinNada   = hijos.filter(h => h.sinPromo).length;
-  const abierta   = FAM_ABIERTAS.has(g.sku);
+function selectorPub(g) {
+  if (g.pubs.length < 2) return '';
+  const sel  = pubElegida(g);
+  const cat  = g.pubs.filter(p => p.catalogo);
+  const prop = g.pubs.filter(p => !p.catalogo);
+  const opt  = p => `<option value="${esc(p.id)}"${p.id===sel.id?' selected':''}>${esc(etiquetaPub(p))}</option>`;
+  const grupo = (t, arr) => arr.length ? `<optgroup label="${t}">${arr.map(opt).join('')}</optgroup>` : '';
 
-  return `<div class="fam${cabeza.catalogo?' escat':''}">
-    ${bloquePub(cabeza, g, true)}
-    <details class="fam-mas" data-fam="${esc(g.sku)}"${abierta?' open':''}>
-      <summary>
-        <span class="fl">›</span>
-        <b>${hijos.length} ${hijos.length===1?'opción':'opciones'} de cuota más</b>
-        <span class="mini">${hijos.map(h => esc(cuotasLabel(h.cuotas))).join(' · ')}</span>
-        <span class="chip ${conOferta?'ok':'mut'}">${conOferta} de ${hijos.length} con oferta hoy</span>
-        ${sinNada?`<span class="chip bad">${sinNada} sin promo</span>`:''}
-        <span class="cierra"><span class="abre">desplegar ▾</span><span class="cerra">plegar ▴</span></span>
-      </summary>
-      <div class="fam-b">${hijos.map(h => bloquePub(h, g)).join('')}</div>
-    </details>
+  return `<div class="selpub">
+    <label for="selPub">Ver publicación</label>
+    <select id="selPub">${grupo('★ Catálogo — más exposición', cat)}${grupo('Publicaciones propias', prop)}</select>
+    <span class="nav-pub">
+      <button class="btn xs" id="pubPrev" title="Anterior">‹</button>
+      <button class="btn xs" id="pubNext" title="Siguiente">›</button>
+    </span>
+    <span class="hint2">${g.pubs.length} publicaciones · ${g.nVig} con oferta hoy</span>
+    <label class="todas"><input type="checkbox" id="verTodas"${TODAS.has(g.sku)?' checked':''}> ver todas apiladas</label>
   </div>`;
+}
+
+const TODAS = new Set(JSON.parse(localStorage.getItem('cdp_todas') || '[]'));
+
+function bloquesPub(g) {
+  if (g.pubs.length < 2) return bloquePub(g.familia.cabeza, g, true);
+  if (TODAS.has(g.sku)) {
+    const orden = [g.familia.cabeza, ...g.familia.hijos];
+    return orden.map(p => bloquePub(p, g, p === g.familia.cabeza)).join('');
+  }
+  return bloquePub(pubElegida(g), g, true);
 }
 /** Una propuesta o una candidata se pueden sumar; el resto se abandona. */
 const sePuedeSumar = x => x.status === 'candidate' || x.esPropuesta;
@@ -805,14 +862,14 @@ function bloquePub(p, g, esCabeza) {
       const tap = p.tapadas.length
         ? ` Hay ${p.tapadas.length} tarjeta${p.tapadas.length===1?'':'s'} más corriendo en las mismas fechas, pero a precio mayor: quedan tapadas.` : '';
       const sig = p.proxima
-        ? ` Después toma la posta <b>${esc(p.proxima.promo || p.proxima.tipo)}</b> el ${fecha(p.proxima.inicio)}${p.proxima.precio?` a ${pes(p.proxima.precio)}`:''}.` : '';
+        ? ` Después toma la posta <b>${esc(nombrePromo(p.proxima))}</b> el ${fecha(p.proxima.inicio)}${p.proxima.precio?` a ${pes(p.proxima.precio)}`:''}.` : '';
       return `<div class="aviso ok" style="margin:12px 16px 0">Hoy manda
-        <b>${esc(p.vigente.promo || p.vigente.tipo)}</b> a <b>${pes(p.vigente.precio)}</b>${p.hasta?` hasta el ${fecha(p.hasta)}`:''}.${tap}${sig}</div>`;
+        <b>${esc(nombrePromo(p.vigente))}</b> a <b>${pes(p.vigente.precio)}</b>${p.hasta?` hasta el ${fecha(p.hasta)}`:''}.${tap}${sig}</div>`;
     }
     if (p.proxima) {
       return `<div class="aviso" style="margin:12px 16px 0">Hoy se vende
         <b>sin oferta</b>, a ${pes(p.lista)}. Ya está aceptada
-        <b>${esc(p.proxima.promo || p.proxima.tipo)}</b>, pero arranca el ${fecha(p.proxima.inicio)}${p.proxima.precio?` a ${pes(p.proxima.precio)}`:''} — hasta ahí no se ve.</div>`;
+        <b>${esc(nombrePromo(p.proxima))}</b>, pero arranca el ${fecha(p.proxima.inicio)}${p.proxima.precio?` a ${pes(p.proxima.precio)}`:''} — hasta ahí no se ve.</div>`;
     }
     if (p.vencidas.length) {
       return `<div class="aviso bad" style="margin:12px 16px 0">Sin oferta hoy.
@@ -831,19 +888,30 @@ function bloquePub(p, g, esCabeza) {
       <td><span class="chip ${est[0]}" title="${esc(est[2])}">${est[1]}</span>
         <div style="font:400 9.5px 'JetBrains Mono';color:var(--ink3);margin-top:3px"
              title="Estado literal que devuelve la API">api: ${esc(x.status)}</div></td>
-      <td><b style="font-size:12px">${esc(x.promo || x.tipo)}</b>
+      <td><b style="font-size:12px">${esc(nombrePromo(x))}</b>
         <div style="font:400 10px 'JetBrains Mono';color:var(--ink3)">${esc(x.tipo)}${x.aceptaSolo?' · solo aceptar':' · definís precio'}</div></td>
       <td class="r n">${x.precio?pes(x.precio):'—'}<div style="font-size:10.5px;color:var(--ink3)">${x.promoPct!=null?'−'+pct(x.promoPct):''}</div></td>
-      <td class="r n">${x.max?pes(x.max):'—'}<div style="font-size:10.5px;color:var(--ink3)">${x.pisoPct!=null?'−'+pct(x.pisoPct):''}</div></td>
+      ${(() => {
+        // En las campañas de "solo aceptar" no hay ventana de precio: Meli fija
+        // el número y vos aceptás o no. Mostrar "—" ahí hacía pensar en un dato
+        // que falta, cuando en realidad no existe.
+        if (x.aceptaSolo && !x.max && !x.sug && !x.min)
+          return `<td class="r" colspan="3" style="color:var(--ink3);font-size:11.5px">
+            Sin ventana de precio — <b style="color:var(--ink2)">lo fija Mercado Libre</b>. Aceptás o no.</td>`;
+        return `<td class="r n">${x.max?pes(x.max):'—'}<div style="font-size:10.5px;color:var(--ink3)">${x.pisoPct!=null?'−'+pct(x.pisoPct):''}</div></td>
       <td class="r n">${x.sug?pes(x.sug):'—'}<div style="font-size:10.5px;color:var(--ink3)">${x.sugPct!=null?'−'+pct(x.sugPct):''}</div></td>
-      <td class="r n">${x.min?pes(x.min):'—'}<div style="font-size:10.5px;color:var(--ink3)">${x.techoPct!=null?'−'+pct(x.techoPct):''}</div></td>
+      <td class="r n">${x.min?pes(x.min):'—'}<div style="font-size:10.5px;color:var(--ink3)">${x.techoPct!=null?'−'+pct(x.techoPct):''}</div></td>`;
+      })()}
       <td class="r n" title="Estimado: precio menos comisión y envío">${(() => {
         const v = neto(p, x.precio || x.sug || x.max);
         return v == null ? '—' : `<b>${pes(v)}</b>`;
       })()}</td>
       <td class="c">${x.meliPct!=null?`<span class="chip ok">ML ${x.meliPct}%</span><div style="font-size:10.5px;color:var(--ink3);margin-top:2px">vos ${x.sellerPct}%</div>`:'<span style="color:var(--ink3)">—</span>'}</td>
       <td style="font-size:11px;color:var(--ink2);white-space:nowrap">
-        ${x.inicio?fecha(x.inicio)+' → '+fecha(x.fin):'—'}
+        ${x.inicio
+          ? fecha(x.inicio)+' → '+fecha(x.fin) + (x.fechaDeCamp
+              ? '<div style="font-size:10px;color:var(--ink3)" title="La fila del ítem no trae fecha; esta sale de la campaña">fecha de la campaña</div>' : '')
+          : '<span title="Ni el ítem ni la campaña traen fecha en la API" style="color:var(--ink3)">sin fecha en la API</span>'}
         ${d!=null?`<div style="color:${d<3?'var(--bad)':'var(--ink3)'}">${d<0?'vencida':'quedan '+d+'d'}</div>`:''}</td>
       <td>${x.boost?'<span class="chip warn">boost</span>':''}
         ${x.stockMin!=null&&x.stockMax!=null?`<span class="chip mut">stock ${x.stockMin}–${x.stockMax}</span>`:''}</td>
@@ -927,11 +995,25 @@ function engancharBuscador() {
 }
 
 function engancharAcciones() {
-  // La flechita se acuerda de si la dejaste abierta.
-  $$('[data-fam]').forEach(d => d.ontoggle = () => {
-    d.open ? FAM_ABIERTAS.add(d.dataset.fam) : FAM_ABIERTAS.delete(d.dataset.fam);
-    localStorage.setItem('cdp_fam', JSON.stringify([...FAM_ABIERTAS]));
-  });
+  // Desplegable de publicación: se acuerda de la última que miraste por SKU.
+  const s = $('#selPub');
+  if (s) {
+    const g = S.skus.find(x => x.sku === S.skuSel);
+    s.onchange = () => { localStorage.setItem('cdp_pub_' + S.skuSel, s.value); render(); };
+    const mover = paso => {
+      const i = g.pubs.findIndex(p => p.id === pubElegida(g).id);
+      const n = g.pubs[(i + paso + g.pubs.length) % g.pubs.length];
+      localStorage.setItem('cdp_pub_' + S.skuSel, n.id); render();
+    };
+    const pv = $('#pubPrev'), nx = $('#pubNext');
+    if (pv) pv.onclick = () => mover(-1);
+    if (nx) nx.onclick = () => mover(1);
+    const v = $('#verTodas');
+    if (v) v.onchange = () => {
+      v.checked ? TODAS.add(S.skuSel) : TODAS.delete(S.skuSel);
+      localStorage.setItem('cdp_todas', JSON.stringify([...TODAS])); render();
+    };
+  }
   $$('[data-man]').forEach(b => b.onclick = () => {
     const it = S.items.find(x => x.id === b.dataset.man);
     if (it) abrirManual(it);
@@ -991,11 +1073,11 @@ function vSinPromo() {
       ${modo === 'espera'
         ? `<td colspan="2" style="font-size:11.5px;color:var(--ink2)">
              <span class="chip warn">arranca ${fecha(it.proxima.inicio)}</span>
-             <div style="margin-top:3px">${esc(it.proxima.promo || it.proxima.tipo)}${it.proxima.precio?' · '+pes(it.proxima.precio):''}</div></td>
+             <div style="margin-top:3px">${esc(nombrePromo(it.proxima))}${it.proxima.precio?' · '+pes(it.proxima.precio):''}</div></td>
            <td class="r"><button class="btn xs" data-goto="${esc(it.sku)}">SKU</button></td>`
       : modo === 'cand'
         ? `<td>${it.candidatas.length} disponible${it.candidatas.length===1?'':'s'}
-             <div style="font-size:10.5px;color:var(--ink3)">${esc((mejor && (mejor.promo||mejor.tipo))||'')}</div></td>
+             <div style="font-size:10.5px;color:var(--ink3)">${esc(mejor ? nombrePromo(mejor) : '')}</div></td>
            <td class="r n">${mejor && mejor.sug ? pes(mejor.sug) : mejor && mejor.max ? pes(mejor.max) : '—'}</td>
            <td class="r"><button class="btn xs" data-sp="${esc(it.id)}|${esc(mejor?mejor.tipo:'')}|${esc(mejor?mejor.promoId:'')}">Sumar</button>
              <button class="btn xs" data-goto="${esc(it.sku)}">SKU</button></td>`
@@ -1234,7 +1316,7 @@ function abrirSumar(o) {
   const solo = p.aceptaSolo, ligh = p.tipo === 'LIGHTNING';
   const def = p.sug || p.max;
 
-  $('#sTit').textContent = 'Sumar a ' + (p.promo || p.tipo);
+  $('#sTit').textContent = 'Sumar a ' + nombrePromo(p);
   $('#sOk').classList.remove('hide');
   $('#sBody').innerHTML = `
     <div class="rango"><span>${esc(it.titulo.slice(0,44))}</span></div>
@@ -1363,7 +1445,7 @@ $('#sOk').onclick = async () => {
   }
   $('#sOk').disabled = true; $('#sOk').innerHTML = '<span class="spin"></span> Enviando';
   try { await api('sumar', body); $('#dSumar').close();
-    toast('Sumado a ' + (p.promo || p.tipo), 'ok'); cargar(); }
+    toast('Sumado a ' + nombrePromo(p), 'ok'); cargar(); }
   catch (e) { toast(e.message, 'bad'); }
   finally { $('#sOk').disabled = false; $('#sOk').textContent = 'Confirmar'; }
 };
