@@ -66,7 +66,11 @@ aside{background:var(--panel);border-right:1px solid var(--line);display:flex;fl
 main{min-width:0;display:flex;flex-direction:column}
 .bar{position:sticky;top:0;z-index:30;background:var(--ground);border-bottom:1px solid var(--line);
   padding:14px 22px;display:flex;flex-wrap:wrap;gap:10px;align-items:center}
-.bar h1{font-size:19px;font-weight:700;margin-right:auto}
+.bar h1{font-size:19px;font-weight:700}
+.frescura{margin-right:auto;display:flex;gap:7px;align-items:center;font-size:12px;color:var(--ink3)}
+.frescura b{font-family:"JetBrains Mono";font-weight:600}
+.frescura.vieja{color:var(--warn)}
+.frescura.muyvieja{color:var(--bad);font-weight:600}
 .wrap{padding:20px 22px 60px;display:flex;flex-direction:column;gap:16px}
 
 .btn{border:1px solid var(--line2);background:var(--panel);border-radius:6px;padding:7px 13px;cursor:pointer;
@@ -249,6 +253,7 @@ dialog::backdrop{background:rgba(10,18,16,.55)}
   <main>
     <div class="bar">
       <h1 id="tit">Por SKU</h1>
+      <span id="frescura" class="frescura"></span>
       <button class="btn" id="recargar">Recargar</button>
       <button class="btn p" id="sync">Sincronizar con Meli</button>
     </div>
@@ -606,7 +611,6 @@ function vSku() {
   $('#wrap').innerHTML = buscador
     + leyenda()
     + heroSku(g)
-    + matrizSku(g)
     + selectorPub(g)
     + bloquesPub(g)
     + cuponesSku(g);
@@ -1450,6 +1454,33 @@ $('#sOk').onclick = async () => {
   finally { $('#sOk').disabled = false; $('#sOk').textContent = 'Confirmar'; }
 };
 
+/**
+ * Antigüedad del dato, arriba de todo.
+ * La app solo puede mostrar lo que se sincronizó: una promoción nueva —una
+ * relámpago, una propuesta que entró ayer— existe en Meli y no acá hasta la
+ * próxima sync. Cuando algo "no aparece", este es el primer lugar a mirar.
+ */
+function pintarFrescura(u) {
+  const el = $('#frescura');
+  if (!el) return;
+  if (!u || !u.cuando) {
+    el.className = 'frescura muyvieja';
+    el.innerHTML = 'Sin sincronizar — la app no tiene datos de Meli todavía';
+    return;
+  }
+  const hs = (Date.now() - new Date(u.cuando)) / 36e5;
+  const cuando = new Date(u.cuando).toLocaleString('es-AR',
+    {day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit', timeZone:TZ_AR});
+  const clase = hs > 24 ? 'muyvieja' : hs > 8 ? 'vieja' : '';
+  const edad = hs < 1 ? 'hace ' + Math.max(1, Math.round(hs*60)) + ' min'
+             : hs < 24 ? 'hace ' + Math.round(hs) + ' h'
+             : 'hace ' + Math.round(hs/24) + ' días';
+  el.className = 'frescura ' + clase;
+  el.innerHTML = 'Datos de <b>' + esc(cuando) + '</b> · ' + edad +
+    ' · ' + (u.publicaciones||0) + ' publicaciones' +
+    (clase ? ' — <b>sincronizá antes de decidir</b>' : '');
+}
+
 /* ═══ carga ═══ */
 async function cargar() {
   if (!S.url || !S.key) { render(); return; }
@@ -1461,6 +1492,7 @@ async function cargar() {
       ? 'Sync ' + new Date(u.cuando).toLocaleString('es-AR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})
         + '<br>' + (u.publicaciones||0) + ' publicaciones · ' + (u.filas||0) + ' filas'
       : 'Conectado, sin sincronizar';
+    pintarFrescura(u);
   } catch (e) { toast(e.message,'bad'); }
   finally { $('#recargar').textContent = 'Recargar'; render(); }
 }
