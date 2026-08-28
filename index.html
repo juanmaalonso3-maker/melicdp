@@ -91,6 +91,21 @@ input:focus-visible,select:focus-visible,.btn:focus-visible,.nav:focus-visible{o
 .sug:hover{border-color:var(--acc);color:var(--acc)}
 .sug small{font-family:system-ui;font-weight:400;color:var(--ink3);margin-left:6px}
 
+/* ── leyenda ── */
+.leyenda{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--shadow)}
+.leyenda summary{padding:12px 16px;cursor:pointer;font-family:"Bricolage Grotesque";font-weight:600;
+  font-size:13px;color:var(--acc);list-style:none;display:flex;align-items:center;gap:8px}
+.leyenda summary::-webkit-details-marker{display:none}
+.leyenda summary::before{content:"›";font-size:17px;line-height:1;transition:transform .15s;display:inline-block}
+.leyenda[open] summary::before{transform:rotate(90deg)}
+.ley-b{padding:0 16px 16px;display:flex;flex-direction:column;gap:12px}
+.ley-g{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:11px}
+.ley-g div{display:flex;flex-direction:column;gap:3px}
+.ley-g b{font:400 10px "JetBrains Mono";letter-spacing:.09em;text-transform:uppercase;color:var(--ink3)}
+.ley-g span{font-size:12.5px;color:var(--ink2);line-height:1.5}
+.ley-g span b{font-family:inherit;font-size:inherit;letter-spacing:0;text-transform:none;color:var(--ink);font-weight:600}
+.ley-n{background:var(--panel2);border-radius:6px;padding:11px 13px;font-size:12.5px;color:var(--ink2);line-height:1.55}
+
 /* ── cabecera de SKU ── */
 .hero{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:18px 20px;
   display:flex;gap:18px;align-items:flex-start;flex-wrap:wrap;box-shadow:var(--shadow)}
@@ -265,6 +280,10 @@ const fecha = s => { if(!s) return '—'; const d = new Date(s);
   return isNaN(d) ? '—' : d.toLocaleDateString('es-AR',{day:'2-digit',month:'short'}); };
 
 /** "3x_campaign" → "3 cuotas" · vacío → "Contado" */
+/** Número tolerante: '', null, undefined o basura → null. Evita los NaN en pantalla
+ *  cuando la hoja todavía tiene los nombres de columna viejos. */
+const nn = v => (v === '' || v == null || isNaN(+v)) ? null : +v;
+
 const cuotasLabel = c => {
   const t = String(c || '').trim();
   if (!t) return 'Contado';
@@ -300,11 +319,9 @@ function procesar(d) {
   S.camps.forEach(c => { vence[c.promo_id] = c.vence_aceptacion; });
 
   S.filas = (d.datos || []).map(r => {
-    const lista = +r.original_price || +r.precio_vidriera || 0;
-    const max = r.max_disc === '' ? null : +r.max_disc;
-    const min = r.min_disc === '' ? null : +r.min_disc;
-    const sug = r.sugerido === '' ? null : +r.sugerido;
-    const pp  = r.precio_promo === '' ? null : +r.precio_promo;
+    const lista = nn(r.original_price) || nn(r.precio_vidriera) || nn(r.precio_lista) || 0;
+    const max = nn(r.max_disc), min = nn(r.min_disc), sug = nn(r.sugerido);
+    const pp  = nn(r.precio_promo);
     return {
       id:String(r.item_id||''), sku:String(r.sku||''), titulo:String(r.titulo||''),
       foto:r.foto, link:r.link, lista, stock:+r.stock||0,
@@ -312,14 +329,11 @@ function procesar(d) {
       envioGratis:r.envio_gratis==='SI', catalogo:r.catalogo==='SI',
       tipo:r.promo_tipo||'', promoId:String(r.promo_id||''), promo:r.promo_nombre||'', status:r.status||'',
       precio: pp && pp > 0 ? pp : null, max, min, sug,
-      meliPct: r['meli_%']==='' ? null : +r['meli_%'],
-      sellerPct: r['seller_%']==='' ? null : +r['seller_%'],
-      boost:r.boost==='SI', precioBoost: r.precio_boost==='' ? null : +r.precio_boost,
+      meliPct: nn(r['meli_%']), sellerPct: nn(r['seller_%']),
+      boost:r.boost==='SI', precioBoost: nn(r.precio_boost),
       inicio:r.inicio, fin:r.fin, vence: vence[String(r.promo_id||'')] || '',
-      stockMin: r.stock_min==='' ? null : +r.stock_min,
-      stockMax: r.stock_max==='' ? null : +r.stock_max,
-      subType:r.sub_type||'', montoFijo: r.monto_fijo==='' ? null : +r.monto_fijo,
-      pctFijo: r.pct_fijo==='' ? null : +r.pct_fijo,
+      stockMin: nn(r.stock_min), stockMax: nn(r.stock_max),
+      subType:r.sub_type||'', montoFijo: nn(r.monto_fijo), pctFijo: nn(r.pct_fijo),
       pisoPct: (max && lista) ? (1 - max/lista)*100 : null,
       techoPct:(min && lista) ? (1 - min/lista)*100 : null,
       sugPct:  (sug && lista) ? (1 - sug/lista)*100 : null,
@@ -441,6 +455,7 @@ function vSku() {
   }
 
   $('#wrap').innerHTML = buscador
+    + leyenda()
     + heroSku(g)
     + matrizSku(g)
     + g.pubs.map(p => bloquePub(p, g)).join('')
@@ -448,6 +463,35 @@ function vSku() {
 
   engancharBuscador();
   engancharAcciones();
+}
+
+/** Qué significa cada columna, y cómo se llama lo mismo en el seller center. */
+function leyenda() {
+  return `<details class="leyenda">
+    <summary>¿Qué significa cada número?</summary>
+    <div class="ley-b">
+      <div class="ley-g">
+        <div><b>Precio</b><span>A cuánto queda la publicación en esa campaña. Solo aparece si ya estás adentro
+          o si Mercado Libre fijó el precio.</span></div>
+        <div><b>Techo · máx. permitido</b><span>El precio <b>más alto</b> que Meli te acepta. Dicho al revés:
+          el descuento <b>mínimo obligatorio</b>. Es el precio que más margen te deja.</span></div>
+        <div><b>Sugerido por Meli</b><span>Lo que Meli te recomienda para que la oferta sea competitiva.
+          No es obligatorio, y casi siempre está por debajo del techo.</span></div>
+        <div><b>Piso · mín. permitido</b><span>El precio <b>más bajo</b> permitido, o sea el descuento máximo.
+          Rara vez conviene, pero marca el otro extremo de la ventana.</span></div>
+        <div><b>Co-fondeo</b><span>Cuánto del descuento paga Mercado Libre y cuánto vos. En el seller center
+          esto aparece como “a tu cargo” y “Mercado Libre”, pero en pesos en vez de porcentaje.</span></div>
+        <div><b>Estados</b><span><span class="chip ok">adentro</span> ya participa ·
+          <span class="chip warn">programada</span> aceptada, arranca después ·
+          <span class="chip acc">disponible</span> te invitaron y todavía no entraste.</span></div>
+      </div>
+      <div class="ley-n"><b>Los nombres no coinciden con los del seller center.</b>
+        Meli muestra el cartel comercial de la campaña (DESCUENTAZOS, CYBER FEST) más un texto de marketing;
+        la API devuelve el nombre técnico y el tipo. El mismo cartel “DESCUENTAZOS” puede envolver
+        varias promociones distintas. Para saber si dos filas son la misma, compará el <b>precio final</b>:
+        ese sí coincide peso por peso.</div>
+    </div>
+  </details>`;
 }
 
 function heroSku(g) {
@@ -547,7 +591,7 @@ function bloquePub(p, g) {
         ${x.inicio?fecha(x.inicio)+' → '+fecha(x.fin):'—'}
         ${d!=null?`<div style="color:${d<3?'var(--bad)':'var(--ink3)'}">${d<0?'vencida':'quedan '+d+'d'}</div>`:''}</td>
       <td>${x.boost?'<span class="chip warn">boost</span>':''}
-        ${x.stockMin!=null?`<span class="chip mut">stock ${x.stockMin}-${x.stockMax}</span>`:''}</td>
+        ${x.stockMin!=null&&x.stockMax!=null?`<span class="chip mut">stock ${x.stockMin}–${x.stockMax}</span>`:''}</td>
       <td class="r">${accion}</td>
     </tr>`;
   }).join('');
