@@ -146,6 +146,9 @@ tbody tr:last-child td{border-bottom:0}
 .chip.bad{background:var(--badbg);color:var(--bad)}
 .chip.mut{background:var(--panel3);color:var(--ink3)}
 .chip.acc{background:var(--acc2);color:var(--acc)}
+.chip.cat{background:var(--acc);color:var(--panel);font-weight:700}
+.pub.escat{border-color:var(--acc)}
+.pub.escat .pub-h{background:var(--acc2)}
 
 /* ── bloque publicación ── */
 .pub{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);overflow:hidden;box-shadow:var(--shadow)}
@@ -156,6 +159,27 @@ tbody tr:last-child td{border-bottom:0}
 .pub-h .sep{margin-left:auto;display:flex;gap:14px;align-items:center;flex-wrap:wrap;font-size:12px}
 .pub-h .sep b{font-family:"JetBrains Mono";font-variant-numeric:tabular-nums}
 .conds{display:flex;gap:5px;flex-wrap:wrap}
+
+/* ── familia: la publicación cabecera + la flechita con las otras cuotas ── */
+.fam{display:flex;flex-direction:column}
+.fam>.pub.cab{border-radius:var(--r) var(--r) 0 0}
+.fam-mas{border:1px solid var(--line);border-top:none;border-radius:0 0 var(--r) var(--r);
+  background:var(--panel2);overflow:hidden;box-shadow:var(--shadow)}
+.fam.escat .fam-mas{border-color:var(--acc)}
+.fam-mas>summary{list-style:none;cursor:pointer;display:flex;gap:10px;align-items:center;flex-wrap:wrap;
+  padding:11px 16px;font-size:12.5px;color:var(--ink2);user-select:none}
+.fam-mas>summary::-webkit-details-marker{display:none}
+.fam-mas>summary:hover{background:var(--panel3)}
+.fam-mas .fl{font:700 18px/1 "Bricolage Grotesque";color:var(--acc);display:inline-block;
+  transition:transform .15s;width:11px}
+.fam-mas[open] .fl{transform:rotate(90deg)}
+.fam-mas summary b{font-family:"Bricolage Grotesque";font-weight:700;font-size:13px;color:var(--ink)}
+.fam-mas .mini{font:400 11px "JetBrains Mono";color:var(--ink3)}
+.fam-mas .cierra{margin-left:auto;font-size:11.5px;color:var(--ink3)}
+.fam-mas[open] .abre{display:none}
+.fam-mas:not([open]) .cerra{display:none}
+.fam-b{display:flex;flex-direction:column;gap:12px;padding:2px 12px 13px}
+.fam-b .pub{box-shadow:none}
 .reloj{display:flex;align-items:center;gap:7px;font-size:11.5px;color:var(--ink2)}
 .prog{height:5px;width:64px;border-radius:3px;background:var(--panel3);overflow:hidden}
 .prog i{display:block;height:100%;background:var(--acc)}
@@ -279,6 +303,13 @@ const pct = n => (n == null || isNaN(n)) ? '—' : n.toFixed(1).replace('.',',')
 const fecha = s => { if(!s) return '—'; const d = new Date(s);
   return isNaN(d) ? '—' : d.toLocaleDateString('es-AR',{day:'2-digit',month:'short'}); };
 
+/** Los listing_type de Meli en castellano, como los llamás vos. */
+const TIPOS = {
+  gold_pro:'Premium', gold_special:'Clásica', gold:'Oro', gold_premium:'Oro Premium',
+  silver:'Plata', bronze:'Bronce', free:'Gratuita'
+};
+const tipoLabel = t => TIPOS[t] || t || '—';
+
 /** "3x_campaign" → "3 cuotas" · vacío → "Contado" */
 /** Número tolerante: '', null, undefined o basura → null. Evita los NaN en pantalla
  *  cuando la hoja todavía tiene los nombres de columna viejos. */
@@ -321,6 +352,71 @@ const ACEPTAR_SOLO = ['MARKETPLACE_CAMPAIGN','SMART','PRICE_MATCHING','PRE_NEGOT
  */
 const ACUERDA_ACEPTA = ['PRE_NEGOTIATED','UNHEALTHY_STOCK'];
 
+/* ═══════════════════════════════════════════════════════════
+   VIGENCIA · cuál de todas las promos manda hoy en la vidriera
+   ───────────────────────────────────────────────────────────
+   La API marca "started" a todo lo que aceptaste y ya arrancó, pero en la
+   publicación se ve UN solo precio. La regla, tal como funciona la CDP:
+
+     · Si dos tarjetas comparten fechas, manda la del precio más bajo.
+       La otra sigue adentro pero queda TAPADA — no se ve.
+     · Si no comparten (una termina el 31/08 y la otra arranca el 31/08),
+       corre la primera hasta que se vence y recién ahí entra la segunda:
+       esa segunda es PROGRAMADA, aunque la API ya la haya dado por buena.
+
+   Por eso la app decía "activa" donde el seller center dice "programada".
+   ═══════════════════════════════════════════════════════════ */
+const HOY = (() => { const d = new Date(); d.setHours(0,0,0,0); return d.getTime(); })();
+const dIni = x => { const d = new Date(x.inicio); return isNaN(d) ? -Infinity : d.setHours(0,0,0,0); };
+const dFin = x => { const d = new Date(x.fin);    return isNaN(d) ?  Infinity : d.setHours(23,59,59,999); };
+
+function resolverVigencia(it) {
+  // Lo comprometido: aceptado y con fecha. Las propuestas todavía no cuentan.
+  const comp = it.promos.filter(x => !x.esCupon && !x.esPropuesta &&
+    (x.status === 'started' || x.status === 'pending'));
+  comp.forEach(x => { x.vigencia = null; });
+
+  const corriendo = comp.filter(x => dIni(x) <= HOY && dFin(x) >= HOY);
+  const futuras   = comp.filter(x => dIni(x) >  HOY).sort((a,b) => dIni(a) - dIni(b));
+  const vencidas  = comp.filter(x => dFin(x) <  HOY);
+
+  // Entre las que comparten fecha gana la más barata.
+  const conP  = corriendo.filter(x => x.precio);
+  const orden = (conP.length ? conP : corriendo).slice()
+    .sort((a,b) => (a.precio ?? Infinity) - (b.precio ?? Infinity));
+  const gana  = orden[0] || null;
+
+  corriendo.forEach(x => { x.vigencia = (x === gana) ? 'vigente' : 'tapada'; });
+  futuras .forEach(x => { x.vigencia = 'futura';  });
+  vencidas.forEach(x => { x.vigencia = 'vencida'; });
+
+  it.vigente  = gana;
+  it.activas  = corriendo;
+  it.tapadas  = corriendo.filter(x => x !== gana);
+  it.futuras  = futuras;
+  it.vencidas = vencidas;
+  it.proxima  = futuras[0] || null;
+  // Hasta cuándo se sostiene el precio de hoy.
+  it.hasta = gana && dFin(gana) !== Infinity ? gana.fin : null;
+}
+
+/** "3x_campaign" → 3 · contado → 0. Sirve para ordenar las opciones. */
+const nCuotas = p => { const m = String(p.cuotas || '').match(/(\d+)/); return m ? +m[1] : 0; };
+
+/**
+ * Familias: una publicación cabecera —la de catálogo, o la de menor lista si el
+ * SKU no tiene catálogo— y detrás de la flechita el resto de las opciones de
+ * cuota del mismo producto.
+ */
+function armarFamilia(pubs) {
+  const cats = pubs.filter(p => p.catalogo);
+  const pool = cats.length ? cats : pubs;
+  const cabeza = pool.slice().sort((a,b) => (a.lista || 0) - (b.lista || 0))[0];
+  const hijos  = pubs.filter(p => p !== cabeza)
+    .sort((a,b) => (b.catalogo - a.catalogo) || (nCuotas(a) - nCuotas(b)) || ((a.lista||0)-(b.lista||0)));
+  return { cabeza, hijos };
+}
+
 function procesar(d) {
   S.data = d; S.camps = d.campanias || []; S.reloj = d.reloj || {}; S.log = d.log || [];
   const vence = {};
@@ -361,17 +457,20 @@ function procesar(d) {
       listingType:f.listingType, cuotas:f.cuotas, envioGratis:f.envioGratis, catalogo:f.catalogo,
       comPct:f.comPct, comFijo:f.comFijo, envioCosto:f.envioCosto, promos:[]
     });
-    m.get(f.id).promos.push(f);
+    // La hoja guarda una fila con las columnas de promo vacías para las
+    // publicaciones que no tienen ninguna. Esa fila describe la publicación,
+    // no una promoción: no va a la lista.
+    if (f.tipo) m.get(f.id).promos.push(f);
   });
   S.items = [...m.values()].map(it => {
-    const act = it.promos.filter(p => (p.status==='started') && p.precio);
-    it.activas = act;
     // "dentro" incluye las programadas —ya están comprometidas aunque no hayan
     // arrancado— pero NO las propuestas, que todavía no aceptaste.
     it.dentro = it.promos.filter(p => !p.esCupon && !p.esPropuesta &&
       (p.status==='started' || p.status==='pending'));
     it.propuestas = it.promos.filter(p => p.esPropuesta);
-    it.precioActivo = act.length ? Math.min(...act.map(p => p.precio)) : null;
+    // Quién manda hoy: fija it.vigente / tapadas / futuras / vencidas.
+    resolverVigencia(it);
+    it.precioActivo = it.vigente ? it.vigente.precio : null;
     it.descActivo = it.precioActivo && it.lista ? (1 - it.precioActivo/it.lista)*100 : null;
     // Una propuesta es accionable igual que una candidata: se puede aceptar.
     it.candidatas = it.promos.filter(p => !p.esCupon && (p.status==='candidate' || p.esPropuesta));
@@ -379,6 +478,9 @@ function procesar(d) {
     it.dias = (S.reloj[it.id]||{}).diasSinOferta ?? null;
     it.muestras = (S.reloj[it.id]||{}).muestras ?? 0;
     it.sinPromo = it.dentro.length === 0;
+    // Lo que importa para la vidriera: hoy no se ve ninguna oferta.
+    // Incluye las que tienen algo aceptado pero que todavía no arrancó.
+    it.sinVigente = !it.vigente;
     return it;
   });
 
@@ -390,7 +492,8 @@ function procesar(d) {
     g.get(k).push(it);
   });
   S.skus = [...g.entries()].map(([sku, pubs]) => {
-    pubs.sort((a,b) => (a.lista||0) - (b.lista||0));
+    // Catálogo primero: son las que más exposición dan.
+    pubs.sort((a,b) => (b.catalogo - a.catalogo) || ((a.lista||0) - (b.lista||0)));
     const campSet = new Map();
     pubs.forEach(p => p.promos.forEach(x => {
       if (x.esCupon) return;
@@ -398,18 +501,23 @@ function procesar(d) {
       if (!campSet.has(k)) campSet.set(k, {clave:k, tipo:x.tipo, promoId:x.promoId, nombre:x.promo, vence:x.vence});
     }));
     return {
-      sku, pubs,
+      sku, pubs, familia: armarFamilia(pubs),
       titulo: pubs[0].titulo, foto: pubs[0].foto,
       stock: Math.max(...pubs.map(p => p.stock || 0)),
       campanias: [...campSet.values()].sort((a,b) => (a.tipo+a.nombre).localeCompare(b.tipo+b.nombre)),
       nCand: pubs.reduce((a,p) => a + p.candidatas.length, 0),
       nAct:  pubs.reduce((a,p) => a + p.dentro.length, 0),
-      nProp: pubs.reduce((a,p) => a + p.propuestas.length, 0)
+      nProp: pubs.reduce((a,p) => a + p.propuestas.length, 0),
+      nCat:  pubs.filter(p => p.catalogo).length,
+      nVig:  pubs.filter(p => p.vigente).length,
+      nTap:  pubs.reduce((a,p) => a + p.tapadas.length, 0),
+      nFut:  pubs.reduce((a,p) => a + p.futuras.length, 0)
     };
   }).sort((a,b) => a.sku.localeCompare(b.sku, 'es', {numeric:true}));
 
-  // huérfanas: publicaciones sin ninguna promo activa ni programada
-  S.huerfanas = S.items.filter(it => it.sinPromo)
+  // huérfanas: hoy no muestran oferta. Las que tienen una programada para más
+  // adelante entran igual —hoy no venden con descuento— pero se marcan aparte.
+  S.huerfanas = S.items.filter(it => it.sinVigente)
     .sort((a,b) => (b.lista||0) - (a.lista||0));
 
   // oportunidades
@@ -474,7 +582,7 @@ function vSku() {
     + leyenda()
     + heroSku(g)
     + matrizSku(g)
-    + g.pubs.map(p => bloquePub(p, g)).join('')
+    + bloqueFamilia(g)
     + cuponesSku(g);
 
   engancharBuscador();
@@ -499,12 +607,33 @@ function leyenda() {
           esto aparece como “a tu cargo” y “Mercado Libre”, pero en pesos en vez de porcentaje.</span></div>
         <div><b>Recibís (estimado)</b><span>Lo que te queda después de comisión y, si ofrecés envío gratis,
           del costo de envío. Es una estimación propia — el número exacto lo tenés en el seller center.</span></div>
-        <div><b>Estados</b><span><span class="chip ok">adentro</span> ya participa ·
-          <span class="chip warn">programada</span> aceptada, arranca después ·
+        <div><b>★ Catálogo</b><span>La publicación compite por la caja de compra del producto y da <b>mucha más
+          exposición</b> que una propia. Van primero en la lista y con el borde marcado. Una promo acá
+          rinde más que la misma promo en una publicación común.</span></div>
+        <div><b>Clásica / Premium</b><span>Es el tipo de publicación. Premium habilita cuotas sin interés pero
+          la comisión es bastante mayor: en la Freidora, 26,8% contra 14,5%. Se ve en la comisión de cada bloque.</span></div>
+        <div><b>Estados</b><span><span class="chip ok">vigente hoy</span> es la que se ve ahora en la publicación ·
+          <span class="chip warn">tapada</span> está adentro y en las mismas fechas, pero hay una más barata ·
+          <span class="chip warn">programada</span> aceptada, arranca en su fecha de inicio ·
           <span class="chip warn">propuesta</span> Meli te la ofrece, todavía no la aceptaste ·
-          <span class="chip acc">disponible</span> te invitaron y podés entrar.
+          <span class="chip acc">disponible</span> te invitaron y podés entrar ·
+          <span class="chip mut">vencida</span> su ventana ya pasó.
           Debajo de cada chip está el estado literal de la API, por si querés cruzarlo.</span></div>
       </div>
+      <div class="ley-n"><b>Por qué acá dice “vigente” y en el seller center “programada”.</b>
+        La API marca <code>started</code> a todo lo que aceptaste y ya arrancó, pero en la publicación se ve
+        <b>un solo precio</b>. La regla de la CDP: si dos tarjetas <b>comparten fechas</b>, manda la del
+        <b>precio más bajo</b> y la otra queda tapada; si <b>no</b> se pisan —una termina el 31/08 y la otra
+        arranca el 31/08— corre la primera hasta que se vence y recién ahí entra la segunda, que hasta ese
+        día es programada. La app ahora resuelve eso y te dice, arriba de cada tabla, cuál manda hoy,
+        hasta cuándo, y cuál toma la posta.</div>
+      <div class="ley-n"><b>La regla del 5% (confirmada en la capacitación de Meli).</b>
+        Para que el algoritmo valide el descuento como real, el precio de oferta tiene que ser
+        <b>al menos 5% menor que el precio más bajo de los últimos ${VENTANA} días</b>. Se consideran todas
+        las ofertas previas <b>excepto las del Día y las Relámpago</b>: esas dos no ensucian la ventana,
+        así que podés usarlas sin frenar el reloj. Y el <b>aporte de Mercado Libre no toca tu comisión</b>:
+        el costo de venta se calcula sobre el precio sin el co-fondeo — o sea sobre lista menos tu parte,
+        no sobre lo que paga el comprador.</div>
       <div class="ley-n"><b>Los nombres no coinciden con los del seller center.</b>
         Meli muestra el cartel comercial de la campaña (DESCUENTAZOS, CYBER FEST) más un texto de marketing;
         la API devuelve el nombre técnico y el tipo. El mismo cartel “DESCUENTAZOS” puede envolver
@@ -523,10 +652,14 @@ function heroSku(g) {
       <h2>${esc(g.titulo)}</h2>
       <div class="stats">
         <div><span>Publicaciones</span><b>${g.pubs.length}</b></div>
+        <div><span>De catálogo</span><b style="color:${g.nCat?'var(--acc)':'var(--ink3)'}">${g.nCat} de ${g.pubs.length}</b></div>
         <div><span>Rango de lista</span><b>${listas.length ? pes(Math.min(...listas)) + ' – ' + pes(Math.max(...listas)) : '—'}</b></div>
         <div><span>Stock</span><b>${num(g.stock)}</b></div>
         <div><span>Campañas</span><b>${g.campanias.length}</b></div>
-        <div><span>Adentro</span><b style="color:var(--ok)">${g.nAct}</b></div>
+        <div title="Publicaciones que hoy muestran precio con descuento"><span>Con oferta hoy</span>
+          <b style="color:${g.nVig?'var(--ok)':'var(--bad)'}">${g.nVig} de ${g.pubs.length}</b></div>
+        ${g.nTap?`<div title="Aceptadas y corriendo, pero hay otra más barata en las mismas fechas"><span>Tapadas</span><b style="color:var(--warn)">${g.nTap}</b></div>`:''}
+        ${g.nFut?`<div title="Aceptadas, arrancan más adelante"><span>Programadas</span><b style="color:var(--warn)">${g.nFut}</b></div>`:''}
         ${g.nProp?`<div><span>Propuestas</span><b style="color:var(--warn)">${g.nProp}</b></div>`:''}
         <div><span>Disponibles</span><b style="color:var(--acc)">${g.nCand}</b></div>
       </div>
@@ -545,7 +678,8 @@ function matrizSku(g) {
         ${esc(c.tipo.toLowerCase())}${d!=null ? ` · ${d<0?'vencida':d+'d'}` : ''}</div></th>`;
   }).join('');
 
-  const filas = g.pubs.map(p => {
+  const orden = [g.familia.cabeza, ...g.familia.hijos];
+  const filas = orden.map((p, i) => {
     const celdas = cols.map(c => {
       const x = p.promos.find(y => y.tipo === c.tipo && y.promoId === c.promoId);
       if (!x) return `<td class="c" style="color:var(--ink3)">—</td>`;
@@ -558,8 +692,14 @@ function matrizSku(g) {
           : x.pisoPct != null ? `<span style="color:var(--ink3)">mín −${pct(x.pisoPct)}</span>` : ''}
       </div></td>`;
     }).join('');
-    return `<tr><td><b style="font-size:12.5px">${esc(cuotasLabel(p.cuotas))}</b>
-      <div style="font:400 10px 'JetBrains Mono';color:var(--ink3)">${esc(p.listingType)} · ${pes(p.lista)}</div></td>${celdas}</tr>`;
+    return `<tr><td style="${i?'padding-left:22px':''}">
+      <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+        ${i?'<span style="color:var(--ink3);font-size:11px">└</span>':''}
+        <b style="font-size:12.5px">${esc(cuotasLabel(p.cuotas))}</b>
+        ${p.catalogo ? '<span class="chip cat">catálogo</span>' : ''}
+        ${p.vigente ? '' : '<span class="chip bad">hoy sin oferta</span>'}</div>
+      <div style="font:400 10px 'JetBrains Mono';color:var(--ink3);margin-top:2px">${esc(tipoLabel(p.listingType))} · ${pes(p.lista)}</div>
+      </td>${celdas}</tr>`;
   }).join('');
 
   return `<div class="panel"><h3>Panorama
@@ -581,12 +721,50 @@ function neto(it, precio) {
   return precio - com - env;
 }
 
-/** Cómo se lee el estado de una promo. Devuelve [clase, texto]. */
+/** Cómo se lee el estado de una promo. Devuelve [clase, texto, explicación]. */
 function estadoDe(x) {
-  if (x.status === 'started')  return ['ok',   'adentro'];
-  if (x.esPropuesta)           return ['warn', 'propuesta'];
-  if (x.status === 'pending')  return ['warn', 'programada'];
-  return ['acc', 'disponible'];
+  if (x.esPropuesta) return ['warn','propuesta',
+    'Mercado Libre te la ofrece con aporte suyo. Todavía no la aceptaste: no está programada ni corriendo.'];
+  switch (x.vigencia) {
+    case 'vigente': return ['ok','vigente hoy',
+      'Es la que se ve en la publicación ahora mismo. Está corriendo y es la más barata de las que comparten fecha.'];
+    case 'tapada':  return ['warn','tapada',
+      'Estás adentro y corre en las mismas fechas, pero hay otra más barata: esta no se ve. Meli muestra siempre el precio menor.'];
+    case 'futura':  return ['warn','programada',
+      'Aceptada, pero todavía no arrancó. Entra en su fecha de inicio, cuando se vaya la que está corriendo.'];
+    case 'vencida': return ['mut','vencida',
+      'Su ventana ya pasó. La API la puede seguir informando, pero no afecta el precio.'];
+  }
+  if (x.status === 'started') return ['ok','adentro','Aceptada y corriendo, sin fechas para ubicarla en el calendario.'];
+  if (x.status === 'pending') return ['warn','programada','Aceptada, arranca después.'];
+  return ['acc','disponible','Te invitaron y podés entrar cuando quieras.'];
+}
+
+/* ═══ familia: cabecera + flechita con las otras opciones de cuota ═══ */
+const FAM_ABIERTAS = new Set(JSON.parse(localStorage.getItem('cdp_fam') || '[]'));
+
+function bloqueFamilia(g) {
+  const { cabeza, hijos } = g.familia;
+  if (!hijos.length) return bloquePub(cabeza, g);
+
+  const conOferta = hijos.filter(h => h.vigente).length;
+  const sinNada   = hijos.filter(h => h.sinPromo).length;
+  const abierta   = FAM_ABIERTAS.has(g.sku);
+
+  return `<div class="fam${cabeza.catalogo?' escat':''}">
+    ${bloquePub(cabeza, g, true)}
+    <details class="fam-mas" data-fam="${esc(g.sku)}"${abierta?' open':''}>
+      <summary>
+        <span class="fl">›</span>
+        <b>${hijos.length} ${hijos.length===1?'opción':'opciones'} de cuota más</b>
+        <span class="mini">${hijos.map(h => esc(cuotasLabel(h.cuotas))).join(' · ')}</span>
+        <span class="chip ${conOferta?'ok':'mut'}">${conOferta} de ${hijos.length} con oferta hoy</span>
+        ${sinNada?`<span class="chip bad">${sinNada} sin promo</span>`:''}
+        <span class="cierra"><span class="abre">desplegar ▾</span><span class="cerra">plegar ▴</span></span>
+      </summary>
+      <div class="fam-b">${hijos.map(h => bloquePub(h, g)).join('')}</div>
+    </details>
+  </div>`;
 }
 /** Una propuesta o una candidata se pueden sumar; el resto se abandona. */
 const sePuedeSumar = x => x.status === 'candidate' || x.esPropuesta;
@@ -595,12 +773,14 @@ const diasPara = s => { if (!s) return null; const d = new Date(s);
   return isNaN(d) ? null : Math.ceil((d - new Date())/864e5); };
 
 /** Un bloque por publicación con TODAS sus promos y todos los campos. */
-function bloquePub(p, g) {
+function bloquePub(p, g, esCabeza) {
   const conds = [
-    `<span class="chip mut">${esc(p.listingType)}</span>`,
+    p.catalogo
+      ? '<span class="chip cat" title="Publicación de catálogo: compite por la caja de compra y da mucha más exposición">★ catálogo</span>'
+      : '<span class="chip mut" title="Publicación propia, no compite en catálogo">publicación propia</span>',
+    `<span class="chip mut">${esc(tipoLabel(p.listingType))}</span>`,
     `<span class="chip ${p.cuotas?'acc':'mut'}">${esc(cuotasLabel(p.cuotas))}</span>`,
-    p.envioGratis ? '<span class="chip mut">envío gratis</span>' : '<span class="chip mut">envío comprador</span>',
-    p.catalogo ? '<span class="chip mut">catálogo</span>' : ''
+    p.envioGratis ? '<span class="chip mut">envío gratis</span>' : '<span class="chip mut">envío comprador</span>'
   ].filter(Boolean).join('');
 
   const rel = p.muestras > 0 ? (() => {
@@ -611,8 +791,35 @@ function bloquePub(p, g) {
       <span>${p.dias}/${VENTANA} d ${ok?'· podés subir precio':''}</span></div>`;
   })() : `<span style="font-size:11.5px;color:var(--ink3)">reloj: sin histórico aún</span>`;
 
+  // Orden de lectura: la que manda hoy arriba, después las tapadas, las que
+  // vienen, las disponibles, y al final lo vencido.
+  const RANGO = {vigente:0, tapada:1, futura:2, vencida:9};
+  const rango = x => x.vigencia != null ? RANGO[x.vigencia]
+    : x.esPropuesta ? 3 : x.status === 'candidate' ? 4 : 5;
   const promos = p.promos.filter(x => !x.esCupon)
-    .sort((a,b) => (a.status==='started'?0:a.status==='pending'?1:2) - (b.status==='started'?0:b.status==='pending'?1:2));
+    .sort((a,b) => (rango(a) - rango(b)) || ((a.precio ?? 9e12) - (b.precio ?? 9e12)));
+
+  // El renglón que explica por qué el precio de la vidriera es ese y no otro.
+  const linea = (() => {
+    if (p.vigente) {
+      const tap = p.tapadas.length
+        ? ` Hay ${p.tapadas.length} tarjeta${p.tapadas.length===1?'':'s'} más corriendo en las mismas fechas, pero a precio mayor: quedan tapadas.` : '';
+      const sig = p.proxima
+        ? ` Después toma la posta <b>${esc(p.proxima.promo || p.proxima.tipo)}</b> el ${fecha(p.proxima.inicio)}${p.proxima.precio?` a ${pes(p.proxima.precio)}`:''}.` : '';
+      return `<div class="aviso ok" style="margin:12px 16px 0">Hoy manda
+        <b>${esc(p.vigente.promo || p.vigente.tipo)}</b> a <b>${pes(p.vigente.precio)}</b>${p.hasta?` hasta el ${fecha(p.hasta)}`:''}.${tap}${sig}</div>`;
+    }
+    if (p.proxima) {
+      return `<div class="aviso" style="margin:12px 16px 0">Hoy se vende
+        <b>sin oferta</b>, a ${pes(p.lista)}. Ya está aceptada
+        <b>${esc(p.proxima.promo || p.proxima.tipo)}</b>, pero arranca el ${fecha(p.proxima.inicio)}${p.proxima.precio?` a ${pes(p.proxima.precio)}`:''} — hasta ahí no se ve.</div>`;
+    }
+    if (p.vencidas.length) {
+      return `<div class="aviso bad" style="margin:12px 16px 0">Sin oferta hoy.
+        La última (<b>${esc(p.vencidas[p.vencidas.length-1].promo || '—')}</b>) venció el ${fecha(p.vencidas[p.vencidas.length-1].fin)}.</div>`;
+    }
+    return `<div class="aviso bad" style="margin:12px 16px 0">Sin ninguna oferta corriendo ni programada.</div>`;
+  })();
 
   const filas = promos.map(x => {
     const est = estadoDe(x);
@@ -621,7 +828,7 @@ function bloquePub(p, g) {
       ? `<button class="btn xs" data-add="${esc(p.id)}|${esc(x.tipo)}|${esc(x.promoId)}">${x.esPropuesta?'Aceptar':'Sumar'}</button>`
       : `<button class="btn xs danger" data-del="${esc(p.id)}|${esc(x.tipo)}|${esc(x.promoId)}">Salir</button>`;
     return `<tr>
-      <td><span class="chip ${est[0]}">${est[1]}</span>
+      <td><span class="chip ${est[0]}" title="${esc(est[2])}">${est[1]}</span>
         <div style="font:400 9.5px 'JetBrains Mono';color:var(--ink3);margin-top:3px"
              title="Estado literal que devuelve la API">api: ${esc(x.status)}</div></td>
       <td><b style="font-size:12px">${esc(x.promo || x.tipo)}</b>
@@ -644,10 +851,12 @@ function bloquePub(p, g) {
     </tr>`;
   }).join('');
 
-  return `<div class="pub">
+  return `<div class="pub${p.catalogo?' escat':''}${esCabeza?' cab':''}">
     <div class="pub-h">
       <span class="cuota">${esc(cuotasLabel(p.cuotas))}</span>
-      ${p.sinPromo ? '<span class="chip bad">sin promo</span>' : ''}
+      ${p.vigente ? '<span class="chip ok">con oferta hoy</span>'
+        : p.proxima ? '<span class="chip warn">arranca ' + fecha(p.proxima.inicio) + '</span>'
+        : '<span class="chip bad">sin oferta hoy</span>'}
       <span class="id">${esc(p.id)}</span>
       ${p.link?`<a href="${esc(p.link)}" target="_blank" rel="noopener" style="font-size:11.5px">ver en Meli ↗</a>`:''}
       <div class="conds">${conds}</div>
@@ -660,6 +869,7 @@ function bloquePub(p, g) {
         ${rel}
       </div>
     </div>
+    ${linea}
     <div class="scroll"><table>
       <thead><tr>
         <th>Estado</th><th>Campaña</th><th class="r">Precio</th>
@@ -671,7 +881,9 @@ function bloquePub(p, g) {
     </table></div>
     ${!p.candidatas.length ? `<div style="padding:11px 16px;border-top:1px solid var(--line);
         display:flex;gap:12px;align-items:center;flex-wrap:wrap;font-size:12px;color:var(--ink2)">
-      <span>Ninguna campaña invitó a esta publicación.</span>
+      <span>${p.promos.length
+        ? 'No queda ninguna campaña disponible para sumar ahora.'
+        : 'Ninguna campaña invitó a esta publicación.'}</span>
       <button class="btn xs p" data-man="${esc(p.id)}">Crear descuento individual</button>
     </div>` : ''}
   </div>`;
@@ -715,6 +927,11 @@ function engancharBuscador() {
 }
 
 function engancharAcciones() {
+  // La flechita se acuerda de si la dejaste abierta.
+  $$('[data-fam]').forEach(d => d.ontoggle = () => {
+    d.open ? FAM_ABIERTAS.add(d.dataset.fam) : FAM_ABIERTAS.delete(d.dataset.fam);
+    localStorage.setItem('cdp_fam', JSON.stringify([...FAM_ABIERTAS]));
+  });
   $$('[data-man]').forEach(b => b.onclick = () => {
     const it = S.items.find(x => x.id === b.dataset.man);
     if (it) abrirManual(it);
@@ -740,8 +957,12 @@ function engancharAcciones() {
 function vSinPromo() {
   $('#tit').textContent = 'Sin promo';
 
-  const conCand = S.huerfanas.filter(it => it.candidatas.length);
-  const sinCand = S.huerfanas.filter(it => !it.candidatas.length);
+  // Las que ya tienen algo aceptado para más adelante van aparte: hoy no
+  // muestran oferta, pero no hay nada que hacer salvo esperar la fecha.
+  const enEspera = S.huerfanas.filter(it => it.proxima);
+  const libres   = S.huerfanas.filter(it => !it.proxima);
+  const conCand = libres.filter(it => it.candidatas.length);
+  const sinCand = libres.filter(it => !it.candidatas.length);
   const plata = conCand.reduce((a,it) => {
     const mejor = mejorCandidata(it);
     return a + (mejor && mejor.sug ? mejor.sug : 0);
@@ -749,7 +970,7 @@ function vSinPromo() {
 
   if (!S.huerfanas.length) {
     $('#wrap').innerHTML = vacio('Todo cubierto',
-      'Las ' + S.items.length + ' publicaciones activas tienen al menos una promoción corriendo o programada.');
+      'Las ' + S.items.length + ' publicaciones activas están mostrando hoy un precio con descuento.');
     return;
   }
 
@@ -760,13 +981,19 @@ function vSinPromo() {
       : `<span style="color:var(--ink3);font-size:11px">sin histórico</span>`;
     return `<tr>
       <td class="n"><b>${esc(it.sku || '—')}</b></td>
-      <td><span class="chip ${it.cuotas?'acc':'mut'}">${esc(cuotasLabel(it.cuotas))}</span></td>
+      <td><span class="chip ${it.cuotas?'acc':'mut'}">${esc(cuotasLabel(it.cuotas))}</span>
+        ${it.catalogo?'<div style="margin-top:3px"><span class="chip cat">★ catálogo</span></div>':''}</td>
       <td><b style="font-size:12px">${esc(it.titulo.slice(0,44))}</b>
-        <div style="font:400 10px 'JetBrains Mono';color:var(--ink3)">${esc(it.id)} · ${esc(it.listingType)}</div></td>
+        <div style="font:400 10px 'JetBrains Mono';color:var(--ink3)">${esc(it.id)} · ${esc(tipoLabel(it.listingType))}${it.catalogo?' · catálogo':''}</div></td>
       <td class="r n">${pes(it.lista)}</td>
       <td class="r n">${num(it.stock)}</td>
       <td>${rel}</td>
-      ${modo === 'cand'
+      ${modo === 'espera'
+        ? `<td colspan="2" style="font-size:11.5px;color:var(--ink2)">
+             <span class="chip warn">arranca ${fecha(it.proxima.inicio)}</span>
+             <div style="margin-top:3px">${esc(it.proxima.promo || it.proxima.tipo)}${it.proxima.precio?' · '+pes(it.proxima.precio):''}</div></td>
+           <td class="r"><button class="btn xs" data-goto="${esc(it.sku)}">SKU</button></td>`
+      : modo === 'cand'
         ? `<td>${it.candidatas.length} disponible${it.candidatas.length===1?'':'s'}
              <div style="font-size:10.5px;color:var(--ink3)">${esc((mejor && (mejor.promo||mejor.tipo))||'')}</div></td>
            <td class="r n">${mejor && mejor.sug ? pes(mejor.sug) : mejor && mejor.max ? pes(mejor.max) : '—'}</td>
@@ -783,11 +1010,16 @@ function vSinPromo() {
 
   $('#wrap').innerHTML = `
     <div class="kpis">
-      <div class="kpi hot"><span class="k">Sin promo</span><span class="v">${S.huerfanas.length}</span><span class="d">de ${S.items.length} publicaciones</span></div>
+      <div class="kpi hot"><span class="k">Hoy sin oferta</span><span class="v">${S.huerfanas.length}</span><span class="d">de ${S.items.length} publicaciones</span></div>
       <div class="kpi"><span class="k">Con campaña disponible</span><span class="v">${conCand.length}</span><span class="d">un click y entran</span></div>
       <div class="kpi"><span class="k">Sin invitación</span><span class="v">${sinCand.length}</span><span class="d">van por descuento individual</span></div>
+      <div class="kpi"><span class="k">Esperando fecha</span><span class="v">${enEspera.length}</span><span class="d">ya aceptadas, arrancan después</span></div>
       <div class="kpi"><span class="k">SKU afectados</span><span class="v">${new Set(S.huerfanas.map(i=>i.sku)).size}</span><span class="d">productos distintos</span></div>
     </div>
+
+    <div class="aviso">Acá entra todo lo que <b>hoy</b> no muestra descuento en la vidriera —
+      no solo lo que nunca se sumó. Una publicación con una promo aceptada que arranca el mes que viene
+      hoy vende a precio de lista, y eso también es una oferta perdida.</div>
 
     ${conCand.length ? `<div class="panel"><h3>Tienen campaña disponible y no están adentro
       <span class="hint">${conCand.length} publicaciones · se suman directo</span></h3>
@@ -805,6 +1037,18 @@ function vSinPromo() {
       <div style="padding:12px 16px;border-top:1px solid var(--line);font-size:12px;color:var(--ink2)">
         El descuento individual (<code>PRICE_DISCOUNT</code>) no necesita invitación: lo creás vos.
         Requiere reputación verde, descuento entre 5% y 80%, y dura máximo 14 días.
+      </div></div>` : ''}
+
+    ${enEspera.length ? `<div class="panel"><h3>Ya aceptadas, esperando su fecha
+      <span class="hint">${enEspera.length} publicaciones · hoy venden a lista</span></h3>
+      <div class="scroll"><table>
+        ${cab('<th colspan="2">Qué entra y cuándo</th><th></th>')}
+        <tbody>${enEspera.map(it => fila(it,'espera')).join('')}</tbody>
+      </table></div>
+      <div style="padding:12px 16px;border-top:1px solid var(--line);font-size:12px;color:var(--ink2)">
+        Si el hueco es largo, podés tapar el bache con una campaña disponible o un descuento individual;
+        pero ojo con la ventana de credibilidad: la oferta que pongas ahora fija el piso de los
+        próximos ${VENTANA} días y le baja el techo a la que arranca después.
       </div></div>` : ''}`;
 
   $$('[data-sp]').forEach(b => b.onclick = () => {
@@ -957,7 +1201,12 @@ function vCred() {
 const avisoOrden = () => `<div class="aviso ok"><b>El orden correcto para subir precios:</b>
   1 · sacar las ofertas · 2 · actualizar el precio · 3 · esperar ${VENTANA} días · 4 · volver a ofertas.
   Si subís el precio con las ofertas puestas, Meli te las saca igual pero la base de credibilidad sigue
-  anclada al precio viejo: perdés la promo y no arrancaste el reloj.</div>`;
+  anclada al precio viejo: perdés la promo y no arrancaste el reloj.</div>
+  <div class="aviso"><b>La regla del 5%, tal como la define Meli en la capacitación:</b>
+  el precio de oferta tiene que ser <b>al menos 5% menor que el precio más bajo de los últimos
+  ${VENTANA} días</b>. La letra chica que cambia el planeo: <b>se consideran todas las ofertas previas
+  excepto las del Día y las Relámpago</b>. Esas dos no entran en la comparación, así que no te ensucian
+  la ventana — son la forma de vender con descuento sin frenar el reloj de credibilidad.</div>`;
 
 /* ═══ VISTA 5 · REGISTRO ═══ */
 function vLog() {
