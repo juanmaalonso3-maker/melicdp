@@ -313,6 +313,14 @@ function toast(msg, tipo) {
 /* ══ normalización ══ */
 const ACEPTAR_SOLO = ['MARKETPLACE_CAMPAIGN','SMART','PRICE_MATCHING','PRE_NEGOTIATED','VOLUME','UNHEALTHY_STOCK'];
 
+/**
+ * En estas dos campañas la doc dice "el usuario acuerda Y acepta": Meli propone
+ * y vos decidís. Para ellas, status "pending" NO es una promo programada, es una
+ * propuesta esperando tu respuesta — así la muestra el seller center.
+ * En el resto (co-fondeadas, DEAL, relámpago) "pending" sí es programada.
+ */
+const ACUERDA_ACEPTA = ['PRE_NEGOTIATED','UNHEALTHY_STOCK'];
+
 function procesar(d) {
   S.data = d; S.camps = d.campanias || []; S.reloj = d.reloj || {}; S.log = d.log || [];
   const vence = {};
@@ -338,8 +346,10 @@ function procesar(d) {
       techoPct:(min && lista) ? (1 - min/lista)*100 : null,
       sugPct:  (sug && lista) ? (1 - sug/lista)*100 : null,
       promoPct:(pp && lista)  ? (1 - pp/lista)*100  : null,
+      comPct: nn(r.com_pct), comFijo: nn(r.com_fijo), envioCosto: nn(r.envio_costo),
       aceptaSolo: ACEPTAR_SOLO.includes(r.promo_tipo),
-      esCupon: r.promo_tipo === 'SELLER_COUPON_CAMPAIGN'
+      esCupon: r.promo_tipo === 'SELLER_COUPON_CAMPAIGN',
+      esPropuesta: r.status === 'pending' && ACUERDA_ACEPTA.includes(r.promo_tipo)
     };
   });
 
@@ -348,18 +358,23 @@ function procesar(d) {
   S.filas.forEach(f => {
     if (!m.has(f.id)) m.set(f.id, {
       id:f.id, sku:f.sku, titulo:f.titulo, foto:f.foto, link:f.link, lista:f.lista, stock:f.stock,
-      listingType:f.listingType, cuotas:f.cuotas, envioGratis:f.envioGratis, catalogo:f.catalogo, promos:[]
+      listingType:f.listingType, cuotas:f.cuotas, envioGratis:f.envioGratis, catalogo:f.catalogo,
+      comPct:f.comPct, comFijo:f.comFijo, envioCosto:f.envioCosto, promos:[]
     });
     m.get(f.id).promos.push(f);
   });
   S.items = [...m.values()].map(it => {
     const act = it.promos.filter(p => (p.status==='started') && p.precio);
     it.activas = act;
-    // "dentro" incluye las programadas: ya están comprometidas aunque no hayan arrancado.
-    it.dentro = it.promos.filter(p => (p.status==='started' || p.status==='pending') && !p.esCupon);
+    // "dentro" incluye las programadas —ya están comprometidas aunque no hayan
+    // arrancado— pero NO las propuestas, que todavía no aceptaste.
+    it.dentro = it.promos.filter(p => !p.esCupon && !p.esPropuesta &&
+      (p.status==='started' || p.status==='pending'));
+    it.propuestas = it.promos.filter(p => p.esPropuesta);
     it.precioActivo = act.length ? Math.min(...act.map(p => p.precio)) : null;
     it.descActivo = it.precioActivo && it.lista ? (1 - it.precioActivo/it.lista)*100 : null;
-    it.candidatas = it.promos.filter(p => p.status==='candidate' && !p.esCupon);
+    // Una propuesta es accionable igual que una candidata: se puede aceptar.
+    it.candidatas = it.promos.filter(p => !p.esCupon && (p.status==='candidate' || p.esPropuesta));
     it.cupones = it.promos.filter(p => p.esCupon);
     it.dias = (S.reloj[it.id]||{}).diasSinOferta ?? null;
     it.muestras = (S.reloj[it.id]||{}).muestras ?? 0;
@@ -388,7 +403,8 @@ function procesar(d) {
       stock: Math.max(...pubs.map(p => p.stock || 0)),
       campanias: [...campSet.values()].sort((a,b) => (a.tipo+a.nombre).localeCompare(b.tipo+b.nombre)),
       nCand: pubs.reduce((a,p) => a + p.candidatas.length, 0),
-      nAct:  pubs.reduce((a,p) => a + p.activas.length, 0)
+      nAct:  pubs.reduce((a,p) => a + p.dentro.length, 0),
+      nProp: pubs.reduce((a,p) => a + p.propuestas.length, 0)
     };
   }).sort((a,b) => a.sku.localeCompare(b.sku, 'es', {numeric:true}));
 
@@ -481,9 +497,13 @@ function leyenda() {
           Rara vez conviene, pero marca el otro extremo de la ventana.</span></div>
         <div><b>Co-fondeo</b><span>Cuánto del descuento paga Mercado Libre y cuánto vos. En el seller center
           esto aparece como “a tu cargo” y “Mercado Libre”, pero en pesos en vez de porcentaje.</span></div>
+        <div><b>Recibís (estimado)</b><span>Lo que te queda después de comisión y, si ofrecés envío gratis,
+          del costo de envío. Es una estimación propia — el número exacto lo tenés en el seller center.</span></div>
         <div><b>Estados</b><span><span class="chip ok">adentro</span> ya participa ·
           <span class="chip warn">programada</span> aceptada, arranca después ·
-          <span class="chip acc">disponible</span> te invitaron y todavía no entraste.</span></div>
+          <span class="chip warn">propuesta</span> Meli te la ofrece, todavía no la aceptaste ·
+          <span class="chip acc">disponible</span> te invitaron y podés entrar.
+          Debajo de cada chip está el estado literal de la API, por si querés cruzarlo.</span></div>
       </div>
       <div class="ley-n"><b>Los nombres no coinciden con los del seller center.</b>
         Meli muestra el cartel comercial de la campaña (DESCUENTAZOS, CYBER FEST) más un texto de marketing;
@@ -507,6 +527,7 @@ function heroSku(g) {
         <div><span>Stock</span><b>${num(g.stock)}</b></div>
         <div><span>Campañas</span><b>${g.campanias.length}</b></div>
         <div><span>Adentro</span><b style="color:var(--ok)">${g.nAct}</b></div>
+        ${g.nProp?`<div><span>Propuestas</span><b style="color:var(--warn)">${g.nProp}</b></div>`:''}
         <div><span>Disponibles</span><b style="color:var(--acc)">${g.nCand}</b></div>
       </div>
     </div>
@@ -528,8 +549,7 @@ function matrizSku(g) {
     const celdas = cols.map(c => {
       const x = p.promos.find(y => y.tipo === c.tipo && y.promoId === c.promoId);
       if (!x) return `<td class="c" style="color:var(--ink3)">—</td>`;
-      const est = x.status === 'started' ? 'ok' : x.status === 'pending' ? 'warn' : 'acc';
-      const txt = x.status === 'started' ? 'adentro' : x.status === 'pending' ? 'programada' : 'disponible';
+      const [est, txt] = estadoDe(x);
       const precio = x.precio || x.sug || x.max;
       return `<td class="c"><div class="celda">
         <span class="chip ${est}">${txt}</span>
@@ -548,6 +568,28 @@ function matrizSku(g) {
       <thead><tr><th>Publicación</th>${cab}</tr></thead>
       <tbody>${filas}</tbody></table></div></div>`;
 }
+
+/**
+ * Estimación de lo que te queda de una venta a ese precio.
+ * comisión = pct·precio + fijo, más el envío si lo regalás.
+ * Medido contra el seller center da dentro del ~1%; por eso va como estimado.
+ */
+function neto(it, precio) {
+  if (!precio || it.comPct == null) return null;
+  const com = it.comPct * precio + (it.comFijo || 0);
+  const env = it.envioGratis ? (it.envioCosto || 0) : 0;
+  return precio - com - env;
+}
+
+/** Cómo se lee el estado de una promo. Devuelve [clase, texto]. */
+function estadoDe(x) {
+  if (x.status === 'started')  return ['ok',   'adentro'];
+  if (x.esPropuesta)           return ['warn', 'propuesta'];
+  if (x.status === 'pending')  return ['warn', 'programada'];
+  return ['acc', 'disponible'];
+}
+/** Una propuesta o una candidata se pueden sumar; el resto se abandona. */
+const sePuedeSumar = x => x.status === 'candidate' || x.esPropuesta;
 
 const diasPara = s => { if (!s) return null; const d = new Date(s);
   return isNaN(d) ? null : Math.ceil((d - new Date())/864e5); };
@@ -573,19 +615,25 @@ function bloquePub(p, g) {
     .sort((a,b) => (a.status==='started'?0:a.status==='pending'?1:2) - (b.status==='started'?0:b.status==='pending'?1:2));
 
   const filas = promos.map(x => {
-    const est = x.status==='started' ? ['ok','adentro'] : x.status==='pending' ? ['warn','programada'] : ['acc','disponible'];
+    const est = estadoDe(x);
     const d = diasPara(x.vence);
-    const accion = x.status === 'candidate'
-      ? `<button class="btn xs" data-add="${esc(p.id)}|${esc(x.tipo)}|${esc(x.promoId)}">Sumar</button>`
+    const accion = sePuedeSumar(x)
+      ? `<button class="btn xs" data-add="${esc(p.id)}|${esc(x.tipo)}|${esc(x.promoId)}">${x.esPropuesta?'Aceptar':'Sumar'}</button>`
       : `<button class="btn xs danger" data-del="${esc(p.id)}|${esc(x.tipo)}|${esc(x.promoId)}">Salir</button>`;
     return `<tr>
-      <td><span class="chip ${est[0]}">${est[1]}</span></td>
+      <td><span class="chip ${est[0]}">${est[1]}</span>
+        <div style="font:400 9.5px 'JetBrains Mono';color:var(--ink3);margin-top:3px"
+             title="Estado literal que devuelve la API">api: ${esc(x.status)}</div></td>
       <td><b style="font-size:12px">${esc(x.promo || x.tipo)}</b>
         <div style="font:400 10px 'JetBrains Mono';color:var(--ink3)">${esc(x.tipo)}${x.aceptaSolo?' · solo aceptar':' · definís precio'}</div></td>
       <td class="r n">${x.precio?pes(x.precio):'—'}<div style="font-size:10.5px;color:var(--ink3)">${x.promoPct!=null?'−'+pct(x.promoPct):''}</div></td>
       <td class="r n">${x.max?pes(x.max):'—'}<div style="font-size:10.5px;color:var(--ink3)">${x.pisoPct!=null?'−'+pct(x.pisoPct):''}</div></td>
       <td class="r n">${x.sug?pes(x.sug):'—'}<div style="font-size:10.5px;color:var(--ink3)">${x.sugPct!=null?'−'+pct(x.sugPct):''}</div></td>
       <td class="r n">${x.min?pes(x.min):'—'}<div style="font-size:10.5px;color:var(--ink3)">${x.techoPct!=null?'−'+pct(x.techoPct):''}</div></td>
+      <td class="r n" title="Estimado: precio menos comisión y envío">${(() => {
+        const v = neto(p, x.precio || x.sug || x.max);
+        return v == null ? '—' : `<b>${pes(v)}</b>`;
+      })()}</td>
       <td class="c">${x.meliPct!=null?`<span class="chip ok">ML ${x.meliPct}%</span><div style="font-size:10.5px;color:var(--ink3);margin-top:2px">vos ${x.sellerPct}%</div>`:'<span style="color:var(--ink3)">—</span>'}</td>
       <td style="font-size:11px;color:var(--ink2);white-space:nowrap">
         ${x.inicio?fecha(x.inicio)+' → '+fecha(x.fin):'—'}
@@ -607,6 +655,8 @@ function bloquePub(p, g) {
         <span>Lista <b>${pes(p.lista)}</b></span>
         <span>Stock <b>${num(p.stock)}</b></span>
         <span>Vendiendo a <b>${p.precioActivo?pes(p.precioActivo):'—'}</b>${p.descActivo?` <small style="color:var(--ink3)">−${pct(p.descActivo)}</small>`:''}</span>
+        ${neto(p, p.precioActivo)!=null?`<span title="Estimado: precio menos comisión${p.envioGratis?' y envío':''}">Recibís <b>${pes(neto(p,p.precioActivo))}</b></span>`:''}
+        ${p.comPct!=null?`<span style="font-size:11px;color:var(--ink3)">com. ${(p.comPct*100).toFixed(1).replace('.',',')}%${p.envioGratis&&p.envioCosto?` + envío ${pes(p.envioCosto)}`:''}</span>`:''}
         ${rel}
       </div>
     </div>
@@ -614,9 +664,10 @@ function bloquePub(p, g) {
       <thead><tr>
         <th>Estado</th><th>Campaña</th><th class="r">Precio</th>
         <th class="r">Techo<br>máx. permitido</th><th class="r">Sugerido<br>por Meli</th><th class="r">Piso<br>mín. permitido</th>
+        <th class="r">Recibís<br>estimado</th>
         <th class="c">Co-fondeo</th><th>Vigencia</th><th></th><th></th>
       </tr></thead>
-      <tbody>${filas || '<tr><td colspan="10" style="color:var(--ink3);padding:16px">Sin promociones para esta publicación.</td></tr>'}</tbody>
+      <tbody>${filas || '<tr><td colspan="11" style="color:var(--ink3);padding:16px">Sin promociones para esta publicación.</td></tr>'}</tbody>
     </table></div>
     ${!p.candidatas.length ? `<div style="padding:11px 16px;border-top:1px solid var(--line);
         display:flex;gap:12px;align-items:center;flex-wrap:wrap;font-size:12px;color:var(--ink2)">

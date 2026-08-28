@@ -150,6 +150,20 @@ function mlGet(path, intento) {
   throw new Error('GET ' + path + ' -> ' + c + ' ' + r.getContentText().slice(0, 300));
 }
 
+/**
+ * Comisión de venta para un precio, categoría y tipo de publicación.
+ * Devuelve el monto en pesos, o null si el endpoint no responde.
+ */
+function _comision(precio, categoria, listingType) {
+  try {
+    const r = mlGet('/sites/MLA/listing_prices?price=' + precio +
+                    '&category_id=' + encodeURIComponent(categoria));
+    const arr = _arr(r).length ? _arr(r) : (Array.isArray(r) ? r : [r]);
+    const m = arr.filter(function (x) { return x.listing_type_id === listingType; })[0];
+    return m && m.sale_fee_amount != null ? m.sale_fee_amount : null;
+  } catch (e) { return null; }
+}
+
 function _mlEscribir(metodo, path, body, intento) {
   intento = intento || 1;
   const opt = {
@@ -289,12 +303,56 @@ function sincronizarTodo() {
         info[b.id] = {
           titulo: b.title || '', sku: b.seller_custom_field || '', precio: b.price,
           stock: b.available_quantity, tipo: b.listing_type_id || '',
+          cat: b.category_id || '',
           link: b.permalink || '', foto: b.thumbnail || '',
           envioGratis: !!(b.shipping && b.shipping.free_shipping),
           catalogo: b.catalog_listing === true, cuotas: cuotas
         };
       });
   }
+
+  // 5.3b · COSTOS — para poder mostrar "Recibís"
+  //
+  // La comisión depende de categoría + tipo de publicación, y dentro de una misma
+  // combinación es lineal: comisión = pct·precio + fijo. Medido en la Freidora
+  // (MLA456045): gold_pro 26,80% y gold_special 14,50%, ambos con fijo 0.
+  // Por eso alcanza con consultar una vez por combinación y no una por ítem.
+  const combos = {};
+  Object.keys(info).forEach(function (id) {
+    const m = info[id];
+    const k = m.cat + '|' + m.tipo;
+    if (!combos[k]) combos[k] = { cat: m.cat, tipo: m.tipo, precio: m.precio || 10000 };
+  });
+  Object.keys(combos).forEach(function (k) {
+    const c = combos[k];
+    const p1 = Math.max(200, Math.round(c.precio));
+    const p2 = Math.max(100, Math.round(c.precio * 0.5));
+    const f1 = _comision(p1, c.cat, c.tipo), f2 = _comision(p2, c.cat, c.tipo);
+    if (f1 != null && f2 != null && p1 !== p2) {
+      c.pct  = (f1 - f2) / (p1 - p2);
+      c.fijo = f1 - c.pct * p1;
+    }
+    Utilities.sleep(120);
+  });
+  Logger.log('combos de comisión: ' + Object.keys(combos).length);
+
+  // El envío gratis lo paga el vendedor. Depende del producto físico, así que
+  // se consulta una vez por SKU y no una por publicación.
+  const envios = {};
+  Object.keys(info).forEach(function (id) {
+    const m = info[id];
+    if (!m.envioGratis) { m.envio = 0; return; }
+    const k = m.sku || id;
+    if (envios[k] === undefined) {
+      try {
+        const s = mlGet('/users/' + uid + '/shipping_options/free?item_id=' + id);
+        envios[k] = (s && s.coverage && s.coverage.all_country &&
+                     s.coverage.all_country.list_cost) || 0;
+      } catch (e) { envios[k] = 0; }
+      Utilities.sleep(120);
+    }
+    m.envio = envios[k];
+  });
 
   // 5.4 · Promociones por ítem
   const filas = [];
@@ -326,7 +384,11 @@ function sincronizarTodo() {
         (p.stock && p.stock.max != null) ? p.stock.max : '',
         p.sub_type || '',
         p.fixed_amount != null ? p.fixed_amount : '',
-        p.fixed_percentage != null ? p.fixed_percentage : ''
+        p.fixed_percentage != null ? p.fixed_percentage : '',
+        // Costos, para el "Recibís" del front
+        (combos[m.cat + '|' + m.tipo] || {}).pct  != null ? combos[m.cat + '|' + m.tipo].pct  : '',
+        (combos[m.cat + '|' + m.tipo] || {}).fijo != null ? combos[m.cat + '|' + m.tipo].fijo : '',
+        m.envio != null ? m.envio : ''
       ]);
     });
     if (n % 10 === 9) Utilities.sleep(250);
@@ -338,7 +400,8 @@ function sincronizarTodo() {
     ['item_id','sku','titulo','precio_vidriera','stock','listing_type','cuotas','envio_gratis',
      'catalogo','link','foto','promo_tipo','promo_id','promo_nombre','status','precio_promo',
      'original_price','max_disc','min_disc','sugerido','meli_%','seller_%','boost','precio_boost',
-     'inicio','fin','stock_min','stock_max','sub_type','monto_fijo','pct_fijo'], filas);
+     'inicio','fin','stock_min','stock_max','sub_type','monto_fijo','pct_fijo',
+     'com_pct','com_fijo','envio_costo'], filas);
 
   // 5.5 · Histórico diario — alimenta el reloj de credibilidad
   const hoy = Utilities.formatDate(new Date(), TZ, 'yyyy-MM-dd');
