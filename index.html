@@ -296,7 +296,7 @@ const S = {
 /* Subilo cada vez que cambie el archivo. Sirve para saber, mirando la app,
    si el navegador está sirviendo la versión nueva o una cacheada: GitHub Pages
    guarda el index.html un rato y es fácil quedarse con el viejo sin notarlo. */
-const VERSION = '2026.08.28-6';
+const VERSION = '2026.08.28-7';
 const VENTANA = 7;
 const $  = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
@@ -392,10 +392,32 @@ const ACUERDA_ACEPTA = ['PRE_NEGOTIATED','UNHEALTHY_STOCK'];
    texto y ordena bien. */
 const TZ_AR = 'America/Argentina/Buenos_Aires';
 const _fdia = new Intl.DateTimeFormat('en-CA', {timeZone:TZ_AR, year:'numeric', month:'2-digit', day:'2-digit'});
+const _fhora = new Intl.DateTimeFormat('en-GB', {timeZone:TZ_AR, hour:'2-digit', minute:'2-digit', hour12:false});
 const diaAR = v => { const d = new Date(v); return isNaN(d) ? null : _fdia.format(d); };
-const HOY  = diaAR(new Date());
-const dIni = x => diaAR(x.inicio) || '0000-00-00';
-const dFin = x => diaAR(x.fin)    || '9999-99-99';
+const HOY   = diaAR(new Date());
+const horaAR = v => { const d = new Date(v); return isNaN(d) ? null : _fhora.format(d); };
+
+/**
+ * ¿La fecha trae hora propia, o es un día suelto?
+ * Meli manda las campañas de varios días como 2026-08-31T00:00:00-03:00, que
+ * quiere decir "todo el 31", no "hasta la medianoche del 31". Las relámpago en
+ * cambio traen hora de verdad —el 31/08 de 0 a 12— y ahí hay que comparar al
+ * instante, no al día, porque a las 13 ya se terminó.
+ */
+const conHora = v => { const h = horaAR(v); return !!h && h !== '00:00'; };
+
+// Argentina no tiene horario de verano, así que el día calendario arranca y
+// termina siempre en -03:00.
+const _iniDia = v => Date.parse(diaAR(v) + 'T00:00:00-03:00');
+const _finDia = v => Date.parse(diaAR(v) + 'T23:59:59.999-03:00');
+const AHORA   = Date.now();
+
+/** El instante en que arranca y termina una promo, o ±Infinity si no se sabe. */
+const tIni = x => !x.inicio ? -Infinity : (conHora(x.inicio) ? new Date(x.inicio).getTime() : _iniDia(x.inicio));
+const tFin = x => !x.fin    ?  Infinity : (conHora(x.fin)    ? new Date(x.fin).getTime()    : _finDia(x.fin));
+
+/** Una promo es intradía si empieza y termina el mismo día: una relámpago. */
+const esIntradia = x => x.inicio && x.fin && diaAR(x.inicio) === diaAR(x.fin);
 
 function resolverVigencia(it) {
   // Lo comprometido: aceptado y con fecha. Las propuestas todavía no cuentan.
@@ -403,9 +425,27 @@ function resolverVigencia(it) {
     (x.status === 'started' || x.status === 'pending'));
   comp.forEach(x => { x.vigencia = null; });
 
-  const corriendo = comp.filter(x => dIni(x) <= HOY && dFin(x) >= HOY);
-  const futuras   = comp.filter(x => dIni(x) >  HOY).sort((a,b) => dIni(a).localeCompare(dIni(b)));
-  const vencidas  = comp.filter(x => dFin(x) <  HOY);
+  // Cuándo corre cada una. Sin fechas, la API no dice nada: ahí lo único
+  // confiable es el estado — "pending" es algo aceptado que TODAVÍA NO arrancó,
+  // y dar por corriendo una relámpago que sale el 31 de 0 a 12 la ponía a
+  // mandar hoy solo por ser la más barata.
+  comp.forEach(x => {
+    x._ini = tIni(x); x._fin = tFin(x);
+    if (!x.inicio && !x.fin) {
+      x._cuando = x.status === 'pending' ? 'futura' : 'corriendo';
+      x._sinFecha = true;
+    } else {
+      x._cuando = AHORA < x._ini ? 'futura' : AHORA > x._fin ? 'vencida' : 'corriendo';
+      x._sinFecha = false;
+    }
+  });
+
+  const corriendo = comp.filter(x => x._cuando === 'corriendo');
+  // Las que sí tienen fecha van primero: son las únicas de las que se puede
+  // decir cuándo toman la posta.
+  const futuras   = comp.filter(x => x._cuando === 'futura')
+    .sort((a,b) => (a._sinFecha - b._sinFecha) || (a._ini - b._ini));
+  const vencidas  = comp.filter(x => x._cuando === 'vencida');
 
   // Entre las que comparten fecha gana la más barata.
   const conP  = corriendo.filter(x => x.precio);
@@ -675,7 +715,10 @@ function leyenda() {
         Para que el algoritmo valide el descuento como real, el precio de oferta tiene que ser
         <b>al menos 5% menor que el precio más bajo de los últimos ${VENTANA} días</b>. Se consideran todas
         las ofertas previas <b>excepto las del Día y las Relámpago</b>: esas dos no ensucian la ventana,
-        así que podés usarlas sin frenar el reloj. Y el <b>aporte de Mercado Libre no toca tu comisión</b>:
+        así que podés usarlas sin frenar el reloj. La relámpago dura unas horas y Meli fija la ventana el
+        día que sale: mientras no la informe queda como <span class="chip warn">programada</span>, y pasa a
+        mandar en la vidriera <b>solo durante esas horas</b>, aunque sea la más barata de todas.
+        Y el <b>aporte de Mercado Libre no toca tu comisión</b>:
         el costo de venta se calcula sobre el precio sin el co-fondeo — o sea sobre lista menos tu parte,
         no sobre lo que paga el comprador.</div>
       <div class="ley-n"><b>Los nombres no coinciden con los del seller center.</b>
@@ -774,8 +817,11 @@ function estadoDe(x) {
       'Es la que se ve en la publicación ahora mismo. Está corriendo y es la más barata de las que comparten fecha.'];
     case 'tapada':  return ['warn','tapada',
       'Estás adentro y corre en las mismas fechas, pero hay otra más barata: esta no se ve. Meli muestra siempre el precio menor.'];
-    case 'futura':  return ['warn','programada',
-      'Aceptada, pero todavía no arrancó. Entra en su fecha de inicio, cuando se vaya la que está corriendo.'];
+    case 'futura':  return x._sinFecha
+      ? ['warn','programada',
+         'Aceptada, pero todavía no arrancó y la API no informa cuándo. Las relámpago son así: duran unas horas y Meli fija la ventana el día que salen. Recién ahí pasa a mandar en la vidriera.']
+      : ['warn','programada',
+         'Aceptada, pero todavía no arrancó. Entra en su fecha de inicio, cuando se vaya la que está corriendo.'];
     case 'vencida': return ['mut','vencida',
       'Su ventana ya pasó. La API la puede seguir informando, pero no afecta el precio.'];
   }
@@ -839,6 +885,20 @@ const sePuedeSumar = x => x.status === 'candidate' || x.esPropuesta;
 const diasPara = s => { if (!s) return null; const d = new Date(s);
   return isNaN(d) ? null : Math.ceil((d - new Date())/864e5); };
 
+/** La ventana de una promo, en el formato que corresponda a su duración. */
+function vigenciaTexto(x) {
+  if (!x.inicio && !x.fin) {
+    return x.tipo === 'LIGHTNING'
+      ? `<span style="color:var(--ink3)" title="Las relámpago duran unas horas y Meli fija la ventana el día que salen; hasta entonces la API no la informa.">la ventana la fija Meli</span>`
+      : `<span style="color:var(--ink3)" title="Ni el ítem ni la campaña traen fecha en la API">sin fecha en la API</span>`;
+  }
+  // Relámpago y ofertas del día: importa la hora, no el día.
+  if (esIntradia(x))
+    return `<b>${fecha(x.inicio)}</b><div style="color:var(--acc)">${horaAR(x.inicio)} a ${horaAR(x.fin)} h</div>`;
+  return fecha(x.inicio) + ' → ' + fecha(x.fin) + (x.fechaDeCamp
+    ? '<div style="font-size:10px;color:var(--ink3)" title="La fila del ítem no trae fecha; esta sale de la campaña">fecha de la campaña</div>' : '');
+}
+
 /** Un bloque por publicación con TODAS sus promos y todos los campos. */
 function bloquePub(p, g, esCabeza) {
   const conds = [
@@ -871,15 +931,19 @@ function bloquePub(p, g, esCabeza) {
     if (p.vigente) {
       const tap = p.tapadas.length
         ? ` Hay ${p.tapadas.length} tarjeta${p.tapadas.length===1?'':'s'} más corriendo en las mismas fechas, pero a precio mayor: quedan tapadas.` : '';
-      const sig = p.proxima
-        ? ` Después toma la posta <b>${esc(nombrePromo(p.proxima))}</b> el ${fecha(p.proxima.inicio)}${p.proxima.precio?` a ${pes(p.proxima.precio)}`:''}.` : '';
+      const sig = !p.proxima ? ''
+        : p.proxima._sinFecha
+          ? ` Hay además <b>${esc(nombrePromo(p.proxima))}</b> aceptada${p.proxima.precio?` a ${pes(p.proxima.precio)}`:''}, pero la API no dice cuándo sale: cuando salga, va a mandar ella.`
+          : ` Después toma la posta <b>${esc(nombrePromo(p.proxima))}</b> el ${fecha(p.proxima.inicio)}${esIntradia(p.proxima)?` de ${horaAR(p.proxima.inicio)} a ${horaAR(p.proxima.fin)} h`:''}${p.proxima.precio?` a ${pes(p.proxima.precio)}`:''}.`;
       return `<div class="aviso ok" style="margin:12px 16px 0">Hoy manda
         <b>${esc(nombrePromo(p.vigente))}</b> a <b>${pes(p.vigente.precio)}</b>${p.hasta?` hasta el ${fecha(p.hasta)}`:''}.${tap}${sig}</div>`;
     }
     if (p.proxima) {
       return `<div class="aviso" style="margin:12px 16px 0">Hoy se vende
         <b>sin oferta</b>, a ${pes(p.lista)}. Ya está aceptada
-        <b>${esc(nombrePromo(p.proxima))}</b>, pero arranca el ${fecha(p.proxima.inicio)}${p.proxima.precio?` a ${pes(p.proxima.precio)}`:''} — hasta ahí no se ve.</div>`;
+        <b>${esc(nombrePromo(p.proxima))}</b>${p.proxima.precio?` a ${pes(p.proxima.precio)}`:''}, pero ${p.proxima._sinFecha
+          ? 'la API no informa cuándo sale — hasta que salga, no se ve'
+          : `arranca el ${fecha(p.proxima.inicio)}${esIntradia(p.proxima)?` de ${horaAR(p.proxima.inicio)} a ${horaAR(p.proxima.fin)} h`:''} — hasta ahí no se ve`}.</div>`;
     }
     if (p.vencidas.length) {
       return `<div class="aviso bad" style="margin:12px 16px 0">Sin oferta hoy.
@@ -918,10 +982,7 @@ function bloquePub(p, g, esCabeza) {
       })()}</td>
       <td class="c">${x.meliPct!=null?`<span class="chip ok">ML ${x.meliPct}%</span><div style="font-size:10.5px;color:var(--ink3);margin-top:2px">vos ${x.sellerPct}%</div>`:'<span style="color:var(--ink3)">—</span>'}</td>
       <td style="font-size:11px;color:var(--ink2);white-space:nowrap">
-        ${x.inicio
-          ? fecha(x.inicio)+' → '+fecha(x.fin) + (x.fechaDeCamp
-              ? '<div style="font-size:10px;color:var(--ink3)" title="La fila del ítem no trae fecha; esta sale de la campaña">fecha de la campaña</div>' : '')
-          : '<span title="Ni el ítem ni la campaña traen fecha en la API" style="color:var(--ink3)">sin fecha en la API</span>'}
+        ${vigenciaTexto(x)}
         ${d!=null?`<div style="color:${d<3?'var(--bad)':'var(--ink3)'}">${d<0?'vencida':'quedan '+d+'d'}</div>`:''}</td>
       <td>${x.boost?'<span class="chip warn">boost</span>':''}
         ${x.stockMin!=null&&x.stockMax!=null?`<span class="chip mut">stock ${x.stockMin}–${x.stockMax}</span>`:''}</td>
