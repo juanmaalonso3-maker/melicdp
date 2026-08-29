@@ -57,17 +57,18 @@ const P = PropertiesService.getScriptProperties();
  * sync tardara 15 segundos desde el editor y 33 desde la app, sin ninguna
  * pista de por qué. Ahora la app muestra las dos versiones y el desfasaje se ve.
  */
-const VERSION_BACK = '2026.08.30-20';
+const VERSION_BACK = '2026.08.30-24';
 
 /**
  * Contrato: qué sabe responder este backend.
  *   1 · datos, sync, sumar, salir, lote
  *   2 · sku, etiqueta, etiquetas
  *   3 · precios
+ *   4 · cupones, cupon_crear, cupon_editar, cupon_borrar
  * El front avisa si lo implementado tiene un contrato menor al que necesita.
  * Subir SOLO al agregar o cambiar una acción, no en cada retoque.
  */
-const CONTRATO = 3;
+const CONTRATO = 4;
 
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -377,6 +378,10 @@ function doPost(e) {
       case 'sumar': return _json({ ok: true, data: sumarAPromo(body) });
       case 'salir': return _json({ ok: true, data: salirDePromo(body) });
       case 'lote':  return _json({ ok: true, data: ejecutarLote(body.acciones || []) });
+      case 'cupones':      return _json({ ok: true, data: leerCupones() });
+      case 'cupon_crear':  return _json({ ok: true, data: crearCupon(body.cupon || {}) });
+      case 'cupon_editar': return _json({ ok: true, data: editarCupon(body.promotion_id, body.cambios || {}) });
+      case 'cupon_borrar': return _json({ ok: true, data: borrarCupon(body.promotion_id) });
       default:      return _json({ ok: false, error: 'accion_desconocida' });
     }
   } catch (err) { return _json({ ok: false, error: String(err.message || err) }); }
@@ -1166,11 +1171,203 @@ function _mensajeError(r) {
       'Con descuento general de hasta 35%, el tramo de mejores compradores debe ser al menos 5% mayor.',
     discount_below_10_percent_difference:
       'Con descuento general mayor a 35%, el tramo de mejores compradores debe ser al menos 10% mayor.',
-    ENTITY_LOCKED: 'El ítem está bloqueado unos segundos. Reintentá.'
+    ENTITY_LOCKED: 'El ítem está bloqueado unos segundos. Reintentá.',
+    // Cupones del vendedor
+    'start_date cannot be earlier than today':
+      'La fecha de inicio no puede ser anterior a hoy.',
+    'finish_date cannot be earlier than start_date':
+      'La fecha de fin no puede ser anterior a la de inicio.',
+    'maximum period cannot exceed the allowed':
+      'El plazo máximo de una campaña de cupones es de 31 días.',
+    'minimum period cannot be lower than allowed':
+      'La campaña tiene que durar al menos un día.',
+    'not upgradable':
+      'Ese campo no se puede cambiar con la campaña ya arrancada. ' +
+      'Con el cupón corriendo Meli solo deja tocar el nombre, la fecha de fin ' +
+      'y el presupuesto (y el presupuesto solo hacia arriba).'
   };
   for (var k in mapa) if (clave.indexOf(k) >= 0) return mapa[k];
   return b.message || r.texto || ('Error ' + r.code);
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   7b · CUPONES DEL VENDEDOR
+   Es el único tipo de campaña que se crea entero desde acá: nombre, monto,
+   fechas, presupuesto y código. Los otros los propone Meli y uno acepta.
+
+   Endpoints (doc "Cupones del vendedor"):
+     POST   /seller-promotions/promotions                    crear
+     PUT    /seller-promotions/promotions/{id}               editar
+     DELETE /seller-promotions/promotions/{id}               borrar
+     GET    /seller-promotions/promotions/{id}               detalle
+     GET    /seller-promotions/promotions/{id}/items         qué hay adentro
+
+   El detalle es lo que NO baja en la sincronización y es justo lo que importa
+   mirar todos los días: presupuesto restante y cupones usados. El presupuesto
+   lo pone el vendedor entero —Meli no aporta nada acá— y cuando se agota, la
+   campaña se termina sola.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/**
+ * Todos los cupones con su detalle y sus ítems, en paralelo.
+ *
+ * Va aparte de la sincronización a propósito: son dos llamadas por cupón y
+ * cambian todo el tiempo (el presupuesto se consume con cada venta), así que
+ * conviene pedirlas cuando se abre la pantalla y no una vez por día.
+ */
+function leerCupones() {
+  const t0 = Date.now();
+  const uid = P.getProperty('ML_USER_ID');
+  if (!uid) throw new Error('Sin user_id. Corré paso1_autorizar.');
+
+  var campanias = [];
+  try {
+    campanias = _arr(mlGet('/seller-promotions/users/' + uid + '?app_version=v2'))
+      .filter(function (c) { return c.type === 'SELLER_COUPON_CAMPAIGN'; });
+  } catch (err) { Logger.log('cupones · lista: ' + err); }
+
+  if (!campanias.length) return { cupones: [], segundos: 0 };
+
+  // Detalle + ítems de cada uno, todo en un solo viaje.
+  const rutas = [];
+  campanias.forEach(function (c) {
+    rutas.push('/seller-promotions/promotions/' + c.id +
+               '?promotion_type=SELLER_COUPON_CAMPAIGN&app_version=v2');
+    rutas.push('/seller-promotions/promotions/' + c.id +
+               '/items?promotion_type=SELLER_COUPON_CAMPAIGN&app_version=v2');
+  });
+  const res = mlGetMuchos(rutas);
+
+  const cupones = campanias.map(function (c) {
+    // OJO: mlGetMuchos devuelve el cuerpo ya parseado, indexado por la ruta.
+    // No envuelve en {code, body} — eso lo hace el /items?ids= de Meli, que es
+    // otra cosa. Una ruta que falló simplemente no está en el mapa.
+    const d = res['/seller-promotions/promotions/' + c.id +
+                  '?promotion_type=SELLER_COUPON_CAMPAIGN&app_version=v2'] || {};
+    const items = _arr(res['/seller-promotions/promotions/' + c.id +
+                  '/items?promotion_type=SELLER_COUPON_CAMPAIGN&app_version=v2']);
+
+    return {
+      id: c.id,
+      nombre: d.name || c.name || '',
+      sub_type: d.sub_type || '',
+      status: d.status || c.status || '',
+      monto_fijo:  d.fixed_amount != null ? d.fixed_amount : '',
+      pct_fijo:    d.fixed_percentage != null ? d.fixed_percentage : '',
+      compra_min:  d.min_purchase_amount != null ? d.min_purchase_amount : '',
+      tope:        d.max_purchase_amount != null ? d.max_purchase_amount : '',
+      codigo:      d.coupon_code || '',
+      inicio: _fechaAR(d.start_date  || c.start_date),
+      fin:    _fechaAR(d.finish_date || c.finish_date),
+      presupuesto: d.budget != null ? d.budget : '',
+      restante:    d.remaining_budget != null ? d.remaining_budget : '',
+      usados:      d.used_coupons != null ? d.used_coupons : '',
+      // Los ítems vienen con su propio status: candidate / pending / started /
+      // finished. El precio siempre es 0 porque el cupón no toca el precio de
+      // la publicación: el descuento se aplica en el checkout.
+      items: items.map(function (x) {
+        return { id: x.id, status: x.status || '',
+                 lista: x.original_price != null ? x.original_price : '',
+                 inicio: _fechaAR(x.start_date), fin: _fechaAR(x.end_date || x.finish_date) };
+      })
+    };
+  });
+
+  const seg = Math.round((Date.now() - t0) / 1000);
+  Logger.log('cupones: ' + cupones.length + ' en ' + seg + 's');
+  return { cupones: cupones, segundos: seg };
+}
+
+/**
+ * Crea la campaña. Se validan acá los límites de la doc en vez de dejar que
+ * Meli conteste un 400 pelado: así el mensaje dice qué corregir.
+ */
+function crearCupon(c) {
+  const sub = String(c.sub_type || '');
+  if (['FIXED_AMOUNT', 'FIXED_PERCENTAGE'].indexOf(sub) < 0)
+    throw new Error('El subtipo tiene que ser FIXED_AMOUNT o FIXED_PERCENTAGE.');
+  if (!c.name) throw new Error('Falta el nombre de la campaña.');
+  if (!c.start_date || !c.finish_date) throw new Error('Faltan las fechas.');
+  if (!(Number(c.budget) > 0)) throw new Error('Falta el presupuesto, y tiene que ser mayor a cero.');
+  if (!(Number(c.min_purchase_amount) > 0)) throw new Error('Falta el monto mínimo de compra.');
+
+  const dias = Math.round(
+    (Date.parse(c.finish_date) - Date.parse(c.start_date)) / 864e5) + 1;
+  if (dias > 31) throw new Error('La campaña dura ' + dias + ' días y el máximo es 31.');
+  if (dias < 1)  throw new Error('La fecha de fin no puede ser anterior a la de inicio.');
+
+  const body = {
+    promotion_type: 'SELLER_COUPON_CAMPAIGN',
+    name: String(c.name),
+    sub_type: sub,
+    start_date:  c.start_date,
+    finish_date: c.finish_date,
+    min_purchase_amount: Number(c.min_purchase_amount),
+    budget: Number(c.budget)
+  };
+  if (sub === 'FIXED_AMOUNT') {
+    if (!(Number(c.fixed_amount) > 0)) throw new Error('Falta el monto de descuento.');
+    body.fixed_amount = Number(c.fixed_amount);
+  } else {
+    if (!(Number(c.fixed_percentage) > 0)) throw new Error('Falta el porcentaje de descuento.');
+    // El tope es obligatorio en FIXED_PERCENTAGE: es cuánto reintegrás como
+    // máximo por venta. Sin esto, un carrito grande se lleva el presupuesto.
+    if (!(Number(c.max_purchase_amount) > 0))
+      throw new Error('En un cupón por porcentaje el tope de reintegro es obligatorio.');
+    body.fixed_percentage  = Number(c.fixed_percentage);
+    body.max_purchase_amount = Number(c.max_purchase_amount);
+  }
+  // El código que ve el comprador no es este: Meli le pega adelante los cinco
+  // primeros caracteres de tu nickname. Si no se manda, el cupón es para todos.
+  if (c.partial_coupon_code)
+    body.partial_coupon_code = String(c.partial_coupon_code).slice(0, 10);
+
+  const r = _mlEscribir('post', '/seller-promotions/promotions?app_version=v2', body);
+  if (!r.ok) {
+    _log('cupon_crear', '', body.name + ' ' + sub, 'ERROR ' + r.code + ' ' + r.texto);
+    throw new Error(_mensajeError(r));
+  }
+  _log('cupon_crear', (r.body || {}).id || '', body.name + ' ' + sub + ' $' + body.budget, 'OK');
+  return { ok: true, cupon: r.body, lista: leerCupones() };
+}
+
+/**
+ * Edita la campaña. Solo se mandan los campos que cambian; promotion_type es
+ * obligatorio siempre. Con la campaña ya arrancada Meli solo deja tocar
+ * nombre, fecha de fin y presupuesto (y el presupuesto solo hacia arriba).
+ */
+function editarCupon(promotionId, cambios) {
+  if (!promotionId) throw new Error('Falta el id de la campaña.');
+  const body = { promotion_type: 'SELLER_COUPON_CAMPAIGN' };
+  ['name','start_date','finish_date','fixed_amount','fixed_percentage',
+   'min_purchase_amount','max_purchase_amount','budget'].forEach(function (k) {
+    if (cambios[k] !== undefined && cambios[k] !== '' && cambios[k] !== null)
+      body[k] = (k === 'name' || k.indexOf('date') >= 0) ? String(cambios[k]) : Number(cambios[k]);
+  });
+  if (Object.keys(body).length === 1) throw new Error('No hay nada que cambiar.');
+
+  const r = _mlEscribir('put', '/seller-promotions/promotions/' + promotionId +
+                        '?app_version=v2', body);
+  if (!r.ok) {
+    _log('cupon_editar', promotionId, JSON.stringify(body), 'ERROR ' + r.code + ' ' + r.texto);
+    throw new Error(_mensajeError(r));
+  }
+  _log('cupon_editar', promotionId, JSON.stringify(body), 'OK');
+  return { ok: true, cupon: r.body, lista: leerCupones() };
+}
+
+function borrarCupon(promotionId) {
+  if (!promotionId) throw new Error('Falta el id de la campaña.');
+  const r = _mlEscribir('delete', '/seller-promotions/promotions/' + promotionId +
+                        '?promotion_type=SELLER_COUPON_CAMPAIGN&app_version=v2', null);
+  if (!r.ok) {
+    _log('cupon_borrar', promotionId, '', 'ERROR ' + r.code + ' ' + r.texto);
+    throw new Error(_mensajeError(r));
+  }
+  _log('cupon_borrar', promotionId, '', 'OK');
+  return { ok: true, lista: leerCupones() };
+}
+
 
 function _log(accion, item, detalle, resultado) {
   try {

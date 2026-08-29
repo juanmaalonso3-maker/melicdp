@@ -238,7 +238,7 @@ tbody tr:last-child td{border-bottom:0}
   border-bottom:1px solid var(--line);background:var(--panel2);font-size:12.5px}
 .barra-sel label{display:flex;gap:6px;align-items:center;cursor:pointer}
 .barra-sel input[type=checkbox]{accent-color:var(--acc);cursor:pointer}
-.barra-sel .sep-flex{margin-left:auto}
+.sep-flex{margin-left:auto}
 .barra-sel select{background:var(--panel);color:var(--ink);border:1px solid var(--line2);
   border-radius:6px;padding:5px 9px;font-size:12px;cursor:pointer}
 .precio-modo{font:600 10.5px "JetBrains Mono";letter-spacing:.06em;text-transform:uppercase;color:var(--ink3)}
@@ -264,7 +264,55 @@ tbody tr:last-child td{border-bottom:0}
   border:1px solid var(--line2);border-radius:6px;background:var(--panel);color:var(--ink)}
 .tprecios input:focus{outline:2px solid var(--acc);outline-offset:1px}
 .tprecios .pLista{font-size:14px}
+.tprecios input.pDesc{width:66px}
 .ed-pie{display:flex;gap:14px;align-items:center;flex-wrap:wrap}
+
+/* ── flechita de desplegar ── */
+.flecha{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;
+  border:1px solid var(--line2);border-radius:6px;background:var(--panel);color:var(--ink2);
+  font-size:10px;line-height:1;transition:transform .14s,border-color .14s,color .14s;flex:0 0 auto}
+tr:hover .flecha{border-color:var(--acc);color:var(--acc)}
+tr.activa .flecha{transform:rotate(90deg);border-color:var(--acc);color:var(--acc);background:var(--acc2)}
+.celda-flecha{width:34px;text-align:center;cursor:pointer}
+.tprecios tr.cambia td{background:var(--acc2)}
+.tprecios .aplicar-fila{opacity:.35}
+.tprecios tr.cambia .aplicar-fila{opacity:1}
+
+/* ── mi página ── */
+.cupones{display:grid;grid-template-columns:repeat(auto-fit,minmax(268px,1fr));gap:12px}
+.cupon{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:15px 16px;
+  display:flex;flex-direction:column;gap:9px;border-top:3px solid var(--acc)}
+.cupon.off{border-top-color:var(--line2);opacity:.72}
+.cupon-cab{display:flex;gap:9px;align-items:flex-start;justify-content:space-between}
+.cupon h4{font-family:"Bricolage Grotesque";font-size:14.5px;font-weight:600;margin:0;line-height:1.3}
+.cupon .benef{font:600 21px "JetBrains Mono";letter-spacing:-.02em;color:var(--acc);
+  display:flex;align-items:baseline;gap:7px}
+.cupon .benef small{font:400 10px "JetBrains Mono";letter-spacing:.06em;
+  text-transform:uppercase;color:var(--ink3)}
+.cupon .benef.sinben{font-size:13px;color:var(--ink3)}
+.cupon .meta{font:400 11px "JetBrains Mono";color:var(--ink3);line-height:1.65}
+.cupon .meta .cod{color:var(--acc);font-weight:600;letter-spacing:.04em}
+.cupon .cuenta{display:flex;gap:16px;margin-top:2px}
+.cupon .cuenta div{display:flex;flex-direction:column}
+.cupon .cuenta b{font:600 16px "JetBrains Mono"}
+.cupon .cuenta small{font:400 9.5px "JetBrains Mono";letter-spacing:.07em;text-transform:uppercase;color:var(--ink3)}
+.cupon-pie{display:flex;gap:6px;flex-wrap:wrap;margin-top:auto;padding-top:4px}
+.presu{display:flex;flex-direction:column;gap:5px}
+.presu-barra{height:6px;border-radius:3px;background:var(--line2);overflow:hidden}
+.presu-barra i{display:block;height:100%;background:var(--acc);border-radius:3px}
+.presu-barra.casi i{background:var(--bad)}
+.presu-alerta{font:400 11px/1.5 "JetBrains Mono";color:var(--bad);
+  background:var(--badbg);border-radius:5px;padding:6px 8px}
+.presu-pie{display:flex;justify-content:space-between;gap:10px;
+  font:400 10.5px "JetBrains Mono";color:var(--ink3)}
+.presu-pie b{color:var(--ink);font-weight:600}
+.form-desc{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;align-items:end}
+.form-desc label{display:flex;flex-direction:column;gap:5px;
+  font:600 10px "JetBrains Mono";letter-spacing:.08em;text-transform:uppercase;color:var(--ink3)}
+.form-desc .lbl-nota{font-weight:400;letter-spacing:0;text-transform:none;opacity:.8}
+.form-desc input,.form-desc select{font:400 13px "JetBrains Mono";padding:8px 10px;
+  border:1px solid var(--line2);border-radius:6px;background:var(--panel);color:var(--ink);width:100%}
+.form-desc input:disabled,.form-desc select:disabled{opacity:.5;cursor:not-allowed}
 .sub{font:400 11px "JetBrains Mono";color:var(--ink3);margin-top:2px}
 
 .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:11px}
@@ -325,6 +373,7 @@ dialog::backdrop{background:rgba(10,18,16,.55)}
       <button class="nav" data-v="sinpromo">Sin oferta hoy <span class="b" id="bH">0</span></button>
       <button class="nav" data-v="relampago">⚡ Ofertas relámpago <span class="b" id="bR">0</span></button>
       <button class="nav" data-v="precios">Actualizar precios</button>
+      <button class="nav" data-v="mipagina">Mi página <span class="b" id="bM">0</span></button>
       <div class="nav-sep">Referencia</div>
       <button class="nav" data-v="tarjetas">Campañas <span class="b" id="bT">0</span></button>
       <button class="nav" data-v="credibilidad">Credibilidad <span class="b" id="bC">0</span></button>
@@ -378,15 +427,21 @@ const S = {
   url: localStorage.getItem('cdp_url') || '',
   key: localStorage.getItem('cdp_key') || '',
   data:null, filas:[], items:[], skus:[], camps:[], reloj:{}, log:[], etiquetas:{}, relampagos:[], selRel:new Set(),
-  vista:'listado', q:'', filtroSalud:'todos', precioSku:null, descGlobal:30, skuSel: localStorage.getItem('cdp_sku') || '', campFiltro:null, sel:new Set()
+  vista:'listado', q:'', filtroSalud:'todos', descGlobal:30, skuSel: localStorage.getItem('cdp_sku') || '', campFiltro:null, sel:new Set(),
+  // Precios: se pueden tener varios productos desplegados a la vez, y el
+  // descuento se recuerda POR CONDICIÓN DE VENTA, no por producto.
+  preciosAbiertos:new Set(), precioEdit:{},
+  // Cupones: null = todavía no se pidió el detalle (presupuesto, código,
+  // usados). Va aparte de la sincronización porque cambia con cada venta.
+  cupones:null, cuponesLeidos:0, cuponAbierto:null, cuponForm:null, soloAdentro:false
 };
 /* Subilo cada vez que cambie el archivo. Sirve para saber, mirando la app,
    si el navegador está sirviendo la versión nueva o una cacheada: GitHub Pages
    guarda el index.html un rato y es fácil quedarse con el viejo sin notarlo. */
-const VERSION = '2026.08.30-22';
+const VERSION = '2026.08.30-25';
 /* Qué necesita el front del backend. Subir SOLO cuando se agrega o cambia una
    acción del /exec, no en cada retoque visual. */
-const CONTRATO_MINIMO = 3;
+const CONTRATO_MINIMO = 4;
 const VENTANA = 7;
 const $  = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
@@ -772,8 +827,9 @@ function _render() {
   $('#bR').textContent = S.relampagos.filter(r => r.puedeSumar).length;
   $('#bT').textContent = S.camps.length;
   $('#bC').textContent = S.items.filter(i => i.dias != null && i.dias > 0 && i.dias < VENTANA).length;
-  ({listado:vListado, sku:vSku, sinpromo:vSinPromo, relampago:vRelampago, precios:vPrecios, tarjetas:vCamp,
-    credibilidad:vCred, registro:vLog})[S.vista]();
+  $('#bM').textContent = S.camps.filter(c => c.tipo === 'SELLER_COUPON_CAMPAIGN').length;
+  ({listado:vListado, sku:vSku, sinpromo:vSinPromo, relampago:vRelampago, precios:vPrecios,
+    mipagina:vMiPagina, tarjetas:vCamp, credibilidad:vCred, registro:vLog})[S.vista]();
 
   // El resultado de la última escritura va arriba de todo, en todas las vistas.
   const ban = bannerResultado();
@@ -1793,8 +1849,9 @@ function vRelampago() {
         <button class="btn p" id="sumarRel"${nSel?'':' disabled'}>Sumar las seleccionadas</button>
       </div>
       <div class="scroll"><table class="listado">${cab}<tbody>${libres.map(fila).join('')}</tbody></table></div>
-      <div class="aviso bad" style="margin:0 16px 14px"><b>Una relámpago activa no se puede eliminar.</b>
-        Solo se puede pausar la publicación entera. Revisá el precio y el stock antes de confirmar.</div>
+      <div class="aviso bad" style="margin:0 16px 14px"><b>Una vez que arranca, la relámpago ya no se saca.</b>
+        Mientras está <b>programada</b> sí se puede eliminar; desde que pasa a corriendo, el único
+        camino es pausar la publicación entera. Revisá el precio y el stock antes de confirmar.</div>
     </div>` : ''}
 
     ${dentro.length ? `<div class="panel"><h3>Ya adentro
@@ -1898,37 +1955,63 @@ function escalonesDe(g) {
 
 function vPrecios() {
   $('#tit').textContent = 'Actualizar precios';
-  const abierto = S.precioSku;
-  const desc = S.descGlobal ?? 30;
+  const abiertos = S.preciosAbiertos;
 
   const filtrados = S.skus.filter(g =>
     !S.q || (g.sku + ' ' + g.titulo).toLowerCase().includes(S.q.toLowerCase()));
 
-  const editor = g => {
-    const esc2 = escalonesDe(g);
-    return `<tr class="fila-precio"><td colspan="5"><div class="editor">
+  /* Lo que estás editando en cada condición: el precio al cliente y el
+     descuento, los dos juntos. Se guardan porque la pantalla se vuelve a
+     dibujar sola —al abrir otro producto, al volver de otra sección— y si solo
+     se recordara el descuento, el target se recalcularía desde la lista vieja
+     y el cambio que estabas por aplicar se perdía sin avisar.
+
+     De fábrica, el descuento sale de la oferta que la condición ya tenga
+     corriendo; si no tiene ninguna, del último que usaste. */
+  const edicion = (sku, i, e) => {
+    const g = S.precioEdit[sku] || (S.precioEdit[sku] = {});
+    if (!g[i]) {
+      const vivos = e.pubs.map(p => p.descActivo).filter(x => x != null && x > 0);
+      const d = vivos.length ? Math.round(Math.max(...vivos)) : (S.descGlobal ?? 30);
+      g[i] = { desc: d, target: Math.round(e.lista * (1 - d/100)) };
+    }
+    return g[i];
+  };
+
+  const detalle = g => {
+    const escs = escalonesDe(g);
+    return `<tr class="fila-precio"><td colspan="6"><div class="editor">
       <div class="ed-cab">
-        <div><b>${esc(g.titulo)}</b><div class="sub">SKU ${esc(g.sku)} · ${esc2.length} escalones · ${g.pubs.length} publicaciones</div></div>
-        <label class="ed-desc">Descuento a mostrar
-          <span><input type="number" id="edDesc" value="${desc}" min="0" max="95" step="1"> %</span></label>
+        <div><b>${esc(g.titulo)}</b>
+          <div class="sub">SKU ${esc(g.sku)} · ${escs.length} condiciones de venta · ${g.pubs.length} publicaciones</div></div>
       </div>
 
-      <div class="aviso">Escribí <b>a cuánto querés vendérselo al cliente</b>. El precio de lista sale
-        solo: <code id="edFormula">target ÷ (1 − ${desc}%)</code>. Es la misma cuenta de tu planilla.</div>
+      <div class="aviso">Cada condición lleva <b>su propio descuento</b>. Escribí a cuánto querés
+        vendérselo al cliente en esa condición y con qué descuento querés que se vea; el precio de
+        lista sale de <code>target ÷ (1 − descuento)</code>. Es la misma cuenta de tu planilla,
+        una fila por escalón.</div>
 
-      <div class="scroll"><table class="tprecios">
+      <div class="scroll"><table class="tprecios" data-sku="${esc(g.sku)}">
         <thead><tr>
-          <th>Escalón</th><th class="r">Precio al cliente</th><th class="r">Precio de lista</th>
-          <th class="r">Lista actual</th><th class="c">Cambio</th><th></th>
+          <th>Condición de venta</th>
+          <th class="r">Lista actual</th>
+          <th class="r">Precio al cliente</th>
+          <th class="c">Descuento</th>
+          <th class="r">Lista nueva</th>
+          <th class="c">Cambio</th>
+          <th></th>
         </tr></thead>
-        <tbody>${esc2.map((e,i) => {
-          const target = Math.round(e.lista * (1 - desc/100));
+        <tbody>${escs.map((e,i) => {
+          const { desc:d, target } = edicion(g.sku, i, e);
+          const viva = e.pubs.map(p => p.precioActivo).filter(Boolean);
           return `<tr data-esc="${i}">
             <td><b>${esc(e.etiqueta)}</b>
-              <div class="sub">${esc(tipoLabel(e.tipo))} · ${e.pubs.length} pub${e.pubs.length>1?'s':''}</div></td>
-            <td class="r"><input type="number" class="pTarget" data-i="${i}" value="${target}" step="1"></td>
-            <td class="r n"><b class="pLista" data-i="${i}">${pes(e.lista)}</b></td>
+              <div class="sub">${esc(tipoLabel(e.tipo))} · ${e.pubs.length} pub${e.pubs.length>1?'s':''}${
+                viva.length ? ' · vendiendo hoy a ' + pes(Math.min(...viva)) : ''}</div></td>
             <td class="r n" style="color:var(--ink3)">${pes(e.lista)}</td>
+            <td class="r"><input type="number" class="pTarget" data-i="${i}" value="${target}" step="1"></td>
+            <td class="c"><input type="number" class="pDesc" data-i="${i}" value="${d}" min="0" max="95" step="1"> %</td>
+            <td class="r n"><b class="pLista" data-i="${i}">${pes(e.lista)}</b></td>
             <td class="c"><span class="pDelta" data-i="${i}" style="color:var(--ink3);font-size:11.5px">sin cambio</span></td>
             <td class="r"><span class="sub">${e.pubs.map(p=>p.id).join('<br>')}</span></td>
           </tr>`;
@@ -1941,32 +2024,38 @@ function vPrecios() {
           Meli te las saca igual pero la base de credibilidad queda anclada al precio viejo:
           perdés la promo y no arrancás el reloj de los ${VENTANA} días.
         </div>
-        <button class="btn p" id="edAplicar">Aplicar a Mercado Libre</button>
+        <button class="btn p" data-aplicar="${esc(g.sku)}">Aplicar este producto</button>
       </div>
     </div></td></tr>`;
   };
 
   $('#wrap').innerHTML = `
     <div class="aviso ok">El precio de lista se arma desde el precio final que querés y el descuento
-      que querés mostrar. Elegí un producto para editar sus escalones.</div>
+      que querés mostrar — <b>y el descuento se elige por condición de venta</b>, porque no es lo
+      mismo lo que podés mostrar en contado que en 12 cuotas. Tocá la flecha de un producto para
+      abrir todas sus condiciones.</div>
 
     <div class="buscador">
       <input type="text" id="qprecio" placeholder="Buscar por nombre o SKU" value="${esc(S.q)}" autocomplete="off">
       <span style="color:var(--ink3);font-size:12px">${filtrados.length} de ${S.skus.length}</span>
+      <span class="sep-flex"></span>
+      <button class="btn sm" id="abrirTodos">${abiertos.size ? 'Cerrar todos' : 'Abrir todos'}</button>
     </div>
 
     <div class="panel"><div class="scroll"><table class="listado">
-      <thead><tr><th>Producto</th><th class="c">Escalones</th><th class="r">Lista más baja</th>
+      <thead><tr><th></th><th>Producto</th><th class="c">Condiciones</th><th class="r">Lista más baja</th>
         <th class="r">Lista más alta</th><th></th></tr></thead>
       <tbody>${filtrados.map(g => {
         const l = g.pubs.map(p => p.lista).filter(Boolean);
-        return `<tr class="abre-precio${abierto===g.sku?' activa':''}" data-sku="${esc(g.sku)}">
+        const ab = abiertos.has(g.sku);
+        return `<tr class="abre-precio${ab?' activa':''}" data-sku="${esc(g.sku)}">
+          <td class="celda-flecha"><span class="flecha">▶</span></td>
           <td><b>${esc(g.titulo.slice(0,52))}</b><div class="sub">SKU ${esc(g.sku)}</div></td>
           <td class="c n">${escalonesDe(g).length}</td>
           <td class="r n">${l.length?pes(Math.min(...l)):'—'}</td>
           <td class="r n">${l.length?pes(Math.max(...l)):'—'}</td>
-          <td class="r"><span class="ver-mas">${abierto===g.sku?'cerrar':'editar precios'}</span></td>
-        </tr>` + (abierto===g.sku ? editor(g) : '');
+          <td class="r"><span class="ver-mas">${ab?'cerrar':'ver condiciones'}</span></td>
+        </tr>` + (ab ? detalle(g) : '');
       }).join('')}</tbody>
     </table></div></div>`;
 
@@ -1975,79 +2064,710 @@ function vPrecios() {
 
 function engancharPrecios() {
   $$('.abre-precio').forEach(t => t.onclick = () => {
-    S.precioSku = S.precioSku === t.dataset.sku ? null : t.dataset.sku;
+    const k = t.dataset.sku;
+    S.preciosAbiertos.has(k) ? S.preciosAbiertos.delete(k) : S.preciosAbiertos.add(k);
     render();
   });
+  const at = $('#abrirTodos');
+  if (at) at.onclick = () => {
+    if (S.preciosAbiertos.size) S.preciosAbiertos.clear();
+    else S.skus.filter(g => !S.q || (g.sku+' '+g.titulo).toLowerCase().includes(S.q.toLowerCase()))
+               .forEach(g => S.preciosAbiertos.add(g.sku));
+    render();
+  };
   const i = $('#qprecio');
   if (i) { let t; i.oninput = e => { clearTimeout(t);
     t = setTimeout(() => { S.q = e.target.value.trim(); render(); const c=$('#qprecio'); if(c) c.focus(); }, 250); }; }
 
-  const g = S.skus.find(x => x.sku === S.precioSku);
-  if (!g) return;
-  const esc2 = escalonesDe(g);
+  // Cada tabla abierta se engancha por separado: se pueden tener varios
+  // productos desplegados a la vez y cada uno recalcula lo suyo.
+  $$('.tprecios').forEach(tabla => {
+    const sku = tabla.dataset.sku;
+    const g = S.skus.find(x => x.sku === sku);
+    if (!g) return;
+    const escs = escalonesDe(g);
+    const q = sel => [...tabla.querySelectorAll(sel)];
 
-  // Recalcula la columna de lista sin volver a dibujar toda la pantalla:
-  // así se puede tipear de corrido sin que salte el foco.
-  const recalcular = () => {
-    const d = +($('#edDesc')||{}).value || 0;
-    const f = $('#edFormula'); if (f) f.textContent = `target ÷ (1 − ${d}%)`;
-    $$('.pTarget').forEach(inp => {
-      const idx = +inp.dataset.i, e = esc2[idx];
-      const nueva = listaDesde(+inp.value, d);
-      const celda = $(`.pLista[data-i="${idx}"]`), delta = $(`.pDelta[data-i="${idx}"]`);
-      if (celda) celda.textContent = nueva ? pes(nueva) : '—';
-      if (!delta) return;
-      // Tolerancia de 2 pesos: ida y vuelta por el redondeo puede dar $1 de
-      // diferencia sin que hayas tocado nada, y eso no es un cambio.
-      if (!nueva || Math.abs(nueva - e.lista) <= 2) {
-        delta.textContent = 'sin cambio'; delta.style.color = 'var(--ink3)'; return;
-      }
-      const dif = nueva - e.lista, pc = (dif / e.lista) * 100;
-      delta.textContent = (dif > 0 ? '▲ ' : '▼ ') + pes(Math.abs(dif)) + '  (' + pct(Math.abs(pc)) + ')';
-      delta.style.color = dif > 0 ? 'var(--ok)' : 'var(--bad)';
-    });
+    /* Recalcula sin volver a dibujar la pantalla: así se puede tipear de
+       corrido sin que el foco salte de campo. */
+    const recalcular = () => {
+      q('.pTarget').forEach(inp => {
+        const idx = +inp.dataset.i, e = escs[idx];
+        const dInp = tabla.querySelector(`.pDesc[data-i="${idx}"]`);
+        const d = dInp ? (+dInp.value || 0) : 0;
+        const nueva = listaDesde(+inp.value, d);
+        const celda = tabla.querySelector(`.pLista[data-i="${idx}"]`);
+        const delta = tabla.querySelector(`.pDelta[data-i="${idx}"]`);
+        const fila  = tabla.querySelector(`tr[data-esc="${idx}"]`);
+        if (celda) celda.textContent = nueva ? pes(nueva) : '—';
+        if (!delta) return;
+        // Tolerancia de 2 pesos: ida y vuelta por el redondeo puede dar $1 de
+        // diferencia sin que hayas tocado nada, y eso no es un cambio.
+        if (!nueva || Math.abs(nueva - e.lista) <= 2) {
+          delta.textContent = 'sin cambio'; delta.style.color = 'var(--ink3)';
+          if (fila) fila.classList.remove('cambia');
+          return;
+        }
+        const dif = nueva - e.lista, pc = (dif / e.lista) * 100;
+        delta.textContent = (dif > 0 ? '▲ ' : '▼ ') + pes(Math.abs(dif)) + '  (' + pct(Math.abs(pc)) + ')';
+        delta.style.color = dif > 0 ? 'var(--ok)' : 'var(--bad)';
+        if (fila) fila.classList.add('cambia');
+      });
+    };
+    // Los dos campos se recuerdan apenas se tocan: si cerrás y volvés a abrir,
+    // o abrís otro producto, lo que estabas por aplicar sigue ahí.
+    const recordar = inp => {
+      const idx = +inp.dataset.i;
+      const guarda = (S.precioEdit[sku] || (S.precioEdit[sku] = {}));
+      const e = guarda[idx] || (guarda[idx] = {});
+      if (inp.classList.contains('pDesc')) { e.desc = +inp.value || 0; S.descGlobal = e.desc || S.descGlobal; }
+      else e.target = +inp.value || 0;
+      recalcular();
+    };
+    q('.pTarget').forEach(inp => inp.oninput = () => recordar(inp));
+    q('.pDesc').forEach(inp => inp.oninput = () => recordar(inp));
+    recalcular();
+  });
+
+  $$('[data-aplicar]').forEach(ap => ap.onclick = () => aplicarPrecios(ap, ap.dataset.aplicar));
+}
+
+async function aplicarPrecios(boton, sku) {
+  const tabla = $(`.tprecios[data-sku="${CSS.escape(sku)}"]`);
+  const g = S.skus.find(x => x.sku === sku);
+  if (!tabla || !g) return;
+  const escs = escalonesDe(g);
+  const cambios = [];
+  [...tabla.querySelectorAll('.pTarget')].forEach(inp => {
+    const idx = +inp.dataset.i, e = escs[idx];
+    const dInp = tabla.querySelector(`.pDesc[data-i="${idx}"]`);
+    const d = dInp ? (+dInp.value || 0) : 0;
+    const nueva = listaDesde(+inp.value, d);
+    if (nueva && Math.abs(nueva - e.lista) > 2)
+      cambios.push({ item_ids: e.pubs.map(p => p.id), precio: nueva,
+                     etiqueta: e.etiqueta, antes: e.lista, desc: d });
+  });
+  if (!cambios.length) { toast('No hay ninguna condición con precio distinto del actual', 'warn'); return; }
+
+  const detalle = cambios.map(c =>
+    '   ' + c.etiqueta + ' (−' + c.desc + '%):  ' + pes(c.antes) + '  →  ' + pes(c.precio) +
+    '   (' + c.item_ids.length + ' publicación' + (c.item_ids.length>1?'es':'') + ')').join('\n');
+  if (!confirm('SKU ' + sku + ' — se van a cambiar ' + cambios.length +
+    ' precios de lista en Mercado Libre:\n\n' + detalle +
+    '\n\nOJO: si estas publicaciones tienen ofertas corriendo, Meli las va a sacar y la ' +
+    'base de credibilidad queda anclada al precio viejo.\n\n¿Confirmás?')) return;
+
+  const fin = ocupar(boton, 'Aplicando', 'precios');
+  try {
+    const r = await api('precios', { cambios: cambios.map(c => ({ item_ids: c.item_ids, precio: c.precio })) });
+    const okN = (r.resultados||[]).filter(x => x.ok).length;
+    const mal = (r.resultados||[]).filter(x => !x.ok);
+    const seg = fin();
+    S.resultado = {
+      ok: mal.length === 0 ? true : (okN ? null : false),
+      seg: seg,
+      titulo: mal.length === 0
+        ? okN + ' precios de lista actualizados en el SKU ' + sku
+        : okN + ' actualizados y ' + mal.length + ' rechazados',
+      detalle: mal.length
+        ? 'Rechazados: ' + mal.slice(0,6).map(x => x.item_id + ' (' + x.error + ')').join(' · ') +
+          (mal.length > 6 ? ' y ' + (mal.length-6) + ' más' : '') + '. El detalle completo está en Registro.'
+        : 'Revisá la columna "Lista actual": tiene que coincidir con lo que pusiste.'
+    };
+    await cargar();
+  } catch (e) { fin(false); toast(e.message, 'bad'); }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   MI PÁGINA
+   Los cupones que armás vos: son la única campaña que se crea entera desde
+   acá. Las otras las propone Meli y uno acepta.
+
+   Cómo funciona un cupón, según la doc:
+     · El descuento NO toca el precio de la publicación. Se aplica en el
+       checkout, sobre el total del carrito, y se acumula con la oferta que la
+       publicación ya tenga puesta. Por eso los ítems adentro figuran siempre
+       con precio 0: no hay precio que mandar.
+     · Solo entra un cupón por venta.
+     · El presupuesto lo ponés vos entero —Meli no aporta nada acá— y cuando
+       se agota, la campaña se termina sola.
+     · Sin código, lo ve cualquiera que entre a la publicación y Meli le pone
+       el cartel. Con código, solo lo usa quien lo tenga.
+     · Máximo 31 días.
+
+   Lo que se puede y lo que no, contra la documentación:
+     · Cupones — se crean, se editan y se borran por API. Todo desde acá.
+     · Descuento individual (PRICE_DISCOUNT) — se crea de cero, con precio y
+       fechas puestas por vos. También está acá abajo.
+     · Ofertas relámpago (LIGHTNING) — se aceptan, no se inventan: Meli decide
+       qué publicaciones son candidatas y con qué precio y stock. Están en ⚡.
+   ═══════════════════════════════════════════════════════════ */
+
+/** Trae los cupones con su detalle. Va aparte de la sincronización porque el
+ *  presupuesto se consume con cada venta y conviene mirarlo fresco. */
+async function cargarCupones(boton) {
+  const fin = boton ? ocupar(boton, 'Leyendo cupones', 'cupones') : null;
+  try {
+    const r = await api('cupones');
+    S.cupones = r.cupones || [];
+    S.cuponesLeidos = Date.now();
+  } catch (e) { toast(e.message, 'bad'); }
+  finally { if (fin) fin(); render(); }
+}
+
+const SUBTIPO = { FIXED_AMOUNT:'Monto fijo', FIXED_PERCENTAGE:'Porcentaje' };
+
+function vMiPagina() {
+  $('#tit').textContent = 'Mi página';
+
+  // Los cupones vienen de la acción "cupones", que trae el detalle completo.
+  // Mientras no se haya pedido, se muestra lo que sí bajó en la sincronización
+  // —nombre y fechas— y se avisa que falta el resto.
+  const detallado = S.cupones !== null;
+  const cupones = detallado ? S.cupones : S.camps
+    .filter(c => c.tipo === 'SELLER_COUPON_CAMPAIGN')
+    .map(c => ({ id:c.promo_id, nombre:c.nombre, status:c.status,
+                 inicio:c.inicio, fin:c.fin, items:[] }));
+
+  // Qué publicaciones son candidatas: cualquiera activa que no esté ya adentro.
+  // Meli usa el mismo criterio que para el descuento individual, así que si un
+  // ítem entra en uno entra en el otro.
+  const beneficioDe = c =>
+    c.sub_type === 'FIXED_AMOUNT'     && c.monto_fijo !== '' ? pes(c.monto_fijo) :
+    c.sub_type === 'FIXED_PERCENTAGE' && c.pct_fijo   !== '' ? c.pct_fijo + '%' : null;
+
+  const consumo = c => {
+    if (c.presupuesto === '' || c.presupuesto == null) return null;
+    const gastado = c.presupuesto - (c.restante ?? c.presupuesto);
+    return { gastado, pct: c.presupuesto ? (gastado / c.presupuesto) * 100 : 0 };
   };
-  $$('.pTarget').forEach(inp => inp.oninput = recalcular);
-  const d = $('#edDesc');
-  if (d) d.oninput = () => { S.descGlobal = +d.value || 0; recalcular(); };
-  recalcular();
 
-  const ap = $('#edAplicar');
-  if (ap) ap.onclick = async () => {
-    const dd = +($('#edDesc')||{}).value || 0;
-    const cambios = [];
-    $$('.pTarget').forEach(inp => {
-      const idx = +inp.dataset.i, e = esc2[idx];
-      const nueva = listaDesde(+inp.value, dd);
-      if (nueva && Math.abs(nueva - e.lista) > 2)
-        cambios.push({ item_ids: e.pubs.map(p => p.id), precio: nueva, etiqueta: e.etiqueta, antes: e.lista });
-    });
-    if (!cambios.length) { toast('No hay ningún precio distinto del actual', 'warn'); return; }
+  const tarjeta = c => {
+    const ben = beneficioDe(c);
+    const adentro = (c.items||[]).filter(i => i.status === 'started' || i.status === 'pending');
+    const cand    = (c.items||[]).filter(i => String(i.status).indexOf('candidat') === 0);
+    const viva    = c.status === 'started' || c.status === 'pending';
+    const con     = consumo(c);
+    return `<div class="cupon${viva?'':' off'}">
+      <div class="cupon-cab">
+        <h4>${esc(c.nombre || 'Cupón sin nombre')}</h4>
+        <span class="chip ${c.status==='started'?'ok':c.status==='pending'?'acc':'mut'}">${
+          esc({started:'corriendo', pending:'programado', finished:'terminado',
+               deleted:'eliminado'}[c.status] || c.status || '—')}</span>
+      </div>
+      ${ben ? `<span class="benef">${ben} <small>${esc(SUBTIPO[c.sub_type]||'')}</small></span>`
+            : `<span class="benef sinben">detalle sin leer</span>`}
+      <div class="meta">
+        ${c.compra_min !== '' && c.compra_min != null
+          ? 'Compra mínima ' + pes(c.compra_min) : ''}${
+          c.tope !== '' && c.tope != null ? ' · tope ' + pes(c.tope) : ''}
+        ${c.inicio || c.fin ? '<br>' + esc(fecha(c.inicio) + ' → ' + fecha(c.fin)) : ''}
+        <br>${c.codigo
+          ? 'Código <b class="cod">' + esc(c.codigo) + '</b>'
+          : (detallado ? 'Sin código: lo ve cualquier comprador' : '')}
+        <br><span style="opacity:.6">${esc(c.id)}</span></div>
 
-    const detalle = cambios.map(c =>
-      '   ' + c.etiqueta + ':  ' + pes(c.antes) + '  →  ' + pes(c.precio) +
-      '   (' + c.item_ids.length + ' publicación' + (c.item_ids.length>1?'es':'') + ')').join('\n');
-    if (!confirm('Se van a cambiar ' + cambios.length + ' precios de lista en Mercado Libre:\n\n' +
-      detalle + '\n\nOJO: si estas publicaciones tienen ofertas corriendo, Meli las va a sacar y la ' +
-      'base de credibilidad queda anclada al precio viejo.\n\n¿Confirmás?')) return;
+      ${con ? `<div class="presu">
+        <div class="presu-barra${con.pct >= 80 ? ' casi' : ''}"><i style="width:${
+          Math.min(100, con.pct).toFixed(1)}%"></i></div>
+        <div class="presu-pie"><span>Quedan <b>${pes(c.restante)}</b> de ${pes(c.presupuesto)}</span>
+          <span>${c.usados || 0} usado${c.usados === 1 ? '' : 's'}</span></div>
+        ${con.pct >= 80 && c.status === 'started' ? `<div class="presu-alerta">Queda el ${
+          pct(100 - con.pct)} del presupuesto. Cuando se agota, la campaña se apaga sola${
+          c.sub_type === 'FIXED_AMOUNT' && c.monto_fijo
+            ? (n => ' — te alcanza para ' + n + (n === 1 ? ' venta más' : ' ventas más'))
+              (Math.floor(c.restante / c.monto_fijo)) : ''}.</div>` : ''}
+      </div>` : ''}
 
-    const fin = ocupar(ap, 'Aplicando', 'precios');
+      <div class="cuenta">
+        <div><b>${adentro.length}</b><small>adentro</small></div>
+        <div><b>${cand.length}</b><small>candidatas</small></div>
+      </div>
+
+      <div class="cupon-pie">
+        <button class="btn xs" data-cupon="${esc(c.id)}">${
+          S.cuponAbierto === c.id ? 'Ocultar' : 'Publicaciones'}</button>
+        ${detallado ? `<button class="btn xs" data-cup-editar="${esc(c.id)}">Editar</button>
+        <button class="btn xs" data-cup-borrar="${esc(c.id)}">Borrar</button>` : ''}
+      </div>
+    </div>`;
+  };
+
+  /* La lista de publicaciones de un cupón: las que ya están adentro y las que
+     podrían entrar. Las candidatas las manda Meli; si el cupón todavía no tiene
+     ninguna, se ofrecen las publicaciones activas igual, porque el criterio de
+     Meli es el mismo que el del descuento individual. */
+  const listaCupon = () => {
+    const c = cupones.find(x => x.id === S.cuponAbierto);
+    if (!c) return '';
+    const porId = {};
+    (c.items||[]).forEach(i => { porId[i.id] = i; });
+    const filas = S.items.slice()
+      .sort((a,b) => (a.sku||'').localeCompare(b.sku||'', 'es', {numeric:true}))
+      .map(it => ({ it, est: (porId[it.id]||{}).status || '' }))
+      .filter(f => S.soloAdentro ? (f.est === 'started' || f.est === 'pending') : true);
+    const dentroN = (c.items||[]).filter(i => i.status==='started'||i.status==='pending').length;
+
+    return `<div class="panel"><h3>${esc(c.nombre || 'Cupón')}
+      <span class="hint">${dentroN} adentro de ${S.items.length} publicaciones</span></h3>
+      <div class="barra-sel">
+        <label><input type="checkbox" id="ckSoloAdentro"${S.soloAdentro?' checked':''}>
+          Ver solo las que están adentro</label>
+        <span class="sep-flex"></span>
+        <button class="btn sm" id="cerrarCupon">Cerrar</button>
+      </div>
+      <div class="scroll"><table class="listado">
+        <thead><tr><th>SKU</th><th>Condición</th><th>Publicación</th>
+          <th class="r">Lista</th><th>Estado</th><th></th></tr></thead>
+        <tbody>${filas.map(({it, est}) => {
+          const dentro = est === 'started' || est === 'pending';
+          return `<tr class="${dentro?'sel':''}">
+            <td class="n"><b>${esc(it.sku || '—')}</b></td>
+            <td>${esc(cuotasPub(it))}
+              <div class="sub">${esc(it.titulo.slice(0,34))}</div></td>
+            <td class="n" style="font-size:11px">${esc(it.id)}</td>
+            <td class="r n">${pes(it.lista)}</td>
+            <td><span class="chip ${dentro?'ok':est?'acc':'mut'}">${
+              esc({started:'adentro', pending:'programada', finished:'sacada'}[est]
+                  || (est ? 'candidata' : 'afuera'))}</span></td>
+            <td class="r"><button class="btn xs" data-cup-accion="${dentro?'salir':'sumar'}"
+              data-item="${esc(it.id)}" data-promo="${esc(c.id)}">${dentro?'Sacar':'Sumar'}</button></td>
+          </tr>`;
+        }).join('')}</tbody></table></div>
+      <div class="aviso" style="margin:0 16px 14px">El cupón <b>no toca el precio</b> de la
+        publicación: el descuento se aplica en el checkout, sobre el total del carrito, y se suma
+        a la oferta que la publicación ya tenga. Por eso acá no se manda ningún precio.</div>
+      </div>`;
+  };
+
+  /* ── formulario de cupón: sirve para crear y para editar ── */
+  const ed = S.cuponForm;
+  const editando = ed && ed.id;
+  const enEdicion = editando ? cupones.find(c => c.id === ed.id) : null;
+  const arrancado = enEdicion && enEdicion.status === 'started';
+  const hoyISO = new Date(Date.now() - 3*36e5).toISOString().slice(0,10);
+
+  const formCupon = () => {
+    if (!ed) return '';
+    const esPct = ed.sub_type === 'FIXED_PERCENTAGE';
+    // Con la campaña ya corriendo Meli solo deja tres campos. Se bloquean los
+    // otros acá en vez de dejar que conteste "not upgradable".
+    const bloq = arrancado ? ' disabled' : '';
+    return `<div class="panel"><h3>${editando ? 'Editar cupón' : 'Crear un cupón'}
+        <span class="hint">${editando ? esc(ed.id) : 'SELLER_COUPON_CAMPAIGN'}</span></h3>
+      <div style="padding:0 16px 16px;display:flex;flex-direction:column;gap:13px">
+        ${arrancado ? `<div class="aviso"><b>Este cupón ya arrancó.</b> Con la campaña corriendo
+          Meli solo deja cambiar el nombre, la fecha de fin y el presupuesto —y el presupuesto
+          solo hacia arriba—. El resto está bloqueado.</div>` : ''}
+        ${editando ? '' : `<div class="aviso"><b>Una advertencia honesta:</b> la documentación de
+          Mercado Libre dice que esta campaña está <b>"disponible solo para MLB"</b> (Brasil).
+          Tu cuenta es MLA y tenés cupones activos, así que la doc está atrasada en eso —pero no
+          probé la creación contra tu cuenta. Si te rechaza, el error va a decir por qué y queda
+          en <b>Registro</b>. Crearlo desde el seller center sigue funcionando igual.</div>`}
+
+        <div class="form-desc">
+          <label>Nombre <span class="lbl-nota">solo lo ves vos</span>
+            <input type="text" id="cuNombre" value="${esc(ed.name||'')}" placeholder="AGUINALDO2"></label>
+          <label>Tipo de descuento
+            <select id="cuSub"${bloq}>
+              <option value="FIXED_AMOUNT"${!esPct?' selected':''}>Monto fijo en pesos</option>
+              <option value="FIXED_PERCENTAGE"${esPct?' selected':''}>Porcentaje</option>
+            </select></label>
+          ${esPct
+            ? `<label>Porcentaje de descuento
+                 <input type="number" id="cuValor" value="${esc(ed.fixed_percentage??'')}" min="1" max="99"${bloq}></label>
+               <label>Tope de reintegro <span class="lbl-nota">por venta</span>
+                 <input type="number" id="cuTope" value="${esc(ed.max_purchase_amount??'')}" min="1"${bloq}></label>`
+            : `<label>Monto de descuento
+                 <input type="number" id="cuValor" value="${esc(ed.fixed_amount??'')}" min="1"${bloq}></label>`}
+          <label>Compra mínima <span class="lbl-nota">para que aplique</span>
+            <input type="number" id="cuMin" value="${esc(ed.min_purchase_amount??'')}" min="1"${bloq}></label>
+          <label>Presupuesto total
+            <input type="number" id="cuPresu" value="${esc(ed.budget??'')}" min="1"></label>
+          <label>Desde<input type="date" id="cuDesde" value="${esc(ed.start_date||hoyISO)}"${bloq}></label>
+          <label>Hasta<input type="date" id="cuHasta" value="${esc(ed.finish_date||'')}"></label>
+          ${editando ? '' : `<label>Código <span class="lbl-nota">opcional</span>
+            <input type="text" id="cuCodigo" value="${esc(ed.partial_coupon_code||'')}"
+              maxlength="10" placeholder="dejalo vacío y lo ve cualquiera"></label>`}
+        </div>
+
+        <div id="cuAviso"></div>
+
+        <div class="ed-pie">
+          <div class="aviso" style="flex:1;margin:0">El presupuesto es <b>tuyo entero</b> —Meli no
+            aporta nada en los cupones— y cuando se agota la campaña se termina sola. Máximo
+            <b>31 días</b>. El descuento se aplica en el checkout sobre el total del carrito y
+            <b>se suma</b> a la oferta que la publicación ya tenga; entra un solo cupón por venta.</div>
+          <button class="btn" id="cuCancelar">Cancelar</button>
+          <button class="btn p" id="cuGuardar">${editando ? 'Guardar cambios' : 'Crear el cupón'}</button>
+        </div>
+      </div>
+    </div>`;
+  };
+
+  /* ── descuento individual ── */
+  const en7 = new Date(Date.now() - 3*36e5 + 6*DIA).toISOString().slice(0,10);
+  const opciones = S.items.slice()
+    .sort((a,b) => (a.sku||'').localeCompare(b.sku||'', 'es', {numeric:true}))
+    .map(it => `<option value="${esc(it.id)}">${esc((it.sku||'s/sku') + ' · ' + cuotasPub(it) +
+      ' · ' + pes(it.lista) + ' · ' + it.titulo.slice(0,34))}</option>`).join('');
+
+  const totPresu = cupones.reduce((a,c) => a + (+c.presupuesto || 0), 0);
+  const totResta = cupones.reduce((a,c) => a + (+c.restante || 0), 0);
+  const totUsa   = cupones.reduce((a,c) => a + (+c.usados || 0), 0);
+
+  $('#wrap').innerHTML = `
+    <div class="kpis">
+      <div class="kpi"><span class="k">Cupones</span><span class="v">${cupones.length}</span>
+        <span class="d">${cupones.filter(c=>c.status==='started').length} corriendo</span></div>
+      <div class="kpi ${totPresu && totResta/totPresu < .2 ? 'bad' : 'good'}">
+        <span class="k">Presupuesto restante</span>
+        <span class="v">${detallado ? pes(totResta) : '—'}</span>
+        <span class="d">${detallado ? 'de ' + pes(totPresu) : 'leé el detalle'}</span></div>
+      <div class="kpi"><span class="k">Cupones usados</span>
+        <span class="v">${detallado ? totUsa : '—'}</span><span class="d">por compradores</span></div>
+      <div class="kpi"><span class="k">Descuentos propios</span><span class="v">${
+        S.filas.filter(f => f.tipo === 'PRICE_DISCOUNT' && (f.status==='started'||f.status==='pending')).length
+      }</span><span class="d">PRICE_DISCOUNT activos</span></div>
+    </div>
+
+    <div class="panel"><h3>Tus cupones
+        <span class="hint">se crean, se editan y se borran desde acá</span></h3>
+      <div class="barra-sel">
+        <button class="btn sm" id="leerCup">${detallado ? 'Actualizar detalle' : 'Leer el detalle'}</button>
+        ${S.cuponesLeidos ? `<span class="sub">leído hace ${
+          Math.max(0, Math.round((Date.now() - S.cuponesLeidos)/60000))} min</span>` : ''}
+        <span class="sep-flex"></span>
+        <button class="btn p sm" id="nuevoCup">Crear un cupón</button>
+      </div>
+      <div style="padding:0 16px 16px">
+        ${!detallado ? `<div class="aviso">El presupuesto restante, los cupones usados y el código
+          no bajan en la sincronización: son dos llamadas por cupón y cambian con cada venta.
+          Tocá <b>Leer el detalle</b> para traerlos.</div><div style="height:11px"></div>` : ''}
+        ${cupones.length
+          ? `<div class="cupones">${cupones.map(tarjeta).join('')}</div>`
+          : `<div class="empty"><b>Todavía no hay cupones</b><p>Un cupón descuenta en el checkout
+              sobre el total del carrito y se suma a la oferta que la publicación ya tenga.
+              Lo armás vos: monto, compra mínima, presupuesto y fechas.</p></div>`}
+      </div>
+    </div>
+
+    ${formCupon()}
+    ${listaCupon()}
+
+    <div class="panel"><h3>Crear un descuento propio
+        <span class="hint">PRICE_DISCOUNT · este sí baja el precio de la publicación</span></h3>
+      <div style="padding:0 16px 16px;display:flex;flex-direction:column;gap:13px">
+        <div class="aviso">A diferencia del cupón, este descuento <b>sí cambia el precio</b> que se
+          ve en la publicación, y por eso <b>sí cuenta para la ventana de credibilidad</b>: tiene
+          que estar al menos 5% abajo del más barato de los últimos ${VENTANA} días.</div>
+
+        <div class="form-desc">
+          <label>Publicación<select id="dcItem">${opciones}</select></label>
+          <label>Precio al cliente<input type="number" id="dcPrecio" step="1" placeholder="0"></label>
+          <label>Precio Mercado Puntos 3–6 <span class="lbl-nota">opcional</span>
+            <input type="number" id="dcTop" step="1" placeholder="vacío si no segmentás"></label>
+          <label>Desde<input type="date" id="dcDesde" value="${hoyISO}"></label>
+          <label>Hasta<input type="date" id="dcHasta" value="${en7}"></label>
+        </div>
+
+        <div id="dcAviso"></div>
+
+        <div class="ed-pie">
+          <div class="aviso" style="flex:1;margin:0">Límites de Mercado Libre: descuento entre
+            <b>5% y 80%</b>, plazo máximo <b>14 días</b>, y si ponés precio para Mercado Puntos 3–6
+            tiene que ser al menos 5% más barato que el general (10% si el descuento pasa del 35%).
+            Para editarlo hay que borrarlo y volver a crearlo.</div>
+          <button class="btn p" id="dcCrear">Crear el descuento</button>
+        </div>
+      </div>
+    </div>`;
+
+  engancharMiPagina(cupones, arrancado);
+}
+
+function engancharMiPagina(cupones, arrancado) {
+  const lc = $('#leerCup'); if (lc) lc.onclick = () => cargarCupones(lc);
+
+  const nc = $('#nuevoCup');
+  if (nc) nc.onclick = () => {
+    S.cuponForm = { sub_type:'FIXED_AMOUNT' };
+    S.cuponAbierto = null;
+    render();
+  };
+
+  $$('[data-cupon]').forEach(b => b.onclick = () => {
+    S.cuponAbierto = S.cuponAbierto === b.dataset.cupon ? null : b.dataset.cupon;
+    S.cuponForm = null;
+    render();
+  });
+  const cc = $('#cerrarCupon');
+  if (cc) cc.onclick = () => { S.cuponAbierto = null; render(); };
+  const sa = $('#ckSoloAdentro');
+  if (sa) sa.onclick = () => { S.soloAdentro = sa.checked; render(); };
+
+  $$('[data-cup-editar]').forEach(b => b.onclick = () => {
+    const c = cupones.find(x => x.id === b.dataset.cupEditar);
+    if (!c) return;
+    // Se carga el formulario con lo que ya tiene, así editar es cambiar un
+    // campo y no volver a escribir todo.
+    S.cuponForm = { id:c.id, name:c.nombre, sub_type:c.sub_type,
+      fixed_amount:c.monto_fijo, fixed_percentage:c.pct_fijo,
+      min_purchase_amount:c.compra_min, max_purchase_amount:c.tope,
+      budget:c.presupuesto,
+      start_date:(c.inicio||'').slice(0,10), finish_date:(c.fin||'').slice(0,10) };
+    S.cuponAbierto = null;
+    render();
+  });
+
+  $$('[data-cup-borrar]').forEach(b => b.onclick = async () => {
+    const c = cupones.find(x => x.id === b.dataset.cupBorrar);
+    if (!c) return;
+    const adentro = (c.items||[]).filter(i => i.status==='started'||i.status==='pending').length;
+    if (!confirm('Borrar el cupón "' + (c.nombre||c.id) + '".\n\n' +
+      (adentro ? 'Tiene ' + adentro + ' publicación' + (adentro>1?'es':'') + ' adentro.\n' : '') +
+      (c.usados ? 'Ya lo usaron ' + c.usados + ' compradores.\n' : '') +
+      '\nEsto no se deshace. ¿Confirmás?')) return;
+    const fin = ocupar(b, 'Borrando', 'cupon');
     try {
-      const r = await api('precios', { cambios: cambios.map(c => ({ item_ids: c.item_ids, precio: c.precio })) });
-      const okN = (r.resultados||[]).filter(x => x.ok).length;
-      const mal = (r.resultados||[]).filter(x => !x.ok);
+      const r = await api('cupon_borrar', { promotion_id: c.id });
+      S.cupones = (r.lista || {}).cupones || S.cupones;
+      S.cuponesLeidos = Date.now();
+      S.resultado = { ok:true, seg:fin(), titulo:'Cupón borrado',
+        detalle:'"' + (c.nombre||c.id) + '" ya no está en tu lista.' };
+      render();
+    } catch (e) { fin(false); toast(e.message, 'bad'); }
+  });
+
+  /* ── sumar o sacar una publicación de un cupón ── */
+  $$('[data-cup-accion]').forEach(b => b.onclick = async () => {
+    const esSalir = b.dataset.cupAccion === 'salir';
+    // El cupón no lleva precio: el descuento se aplica en el checkout.
+    const cuerpo = { item_id: b.dataset.item, promotion_type: 'SELLER_COUPON_CAMPAIGN',
+                     promotion_id: b.dataset.promo };
+    const fin = ocupar(b, esSalir ? 'Sacando' : 'Sumando', 'cupon');
+    try {
+      const r = await api(esSalir ? 'salir' : 'sumar', cuerpo);
       const seg = fin();
+      S.resultado = Object.assign({ seg }, verificar(esSalir ? 'salir' : 'sumar', cuerpo, r.filas));
+      await cargarCupones();
+      await cargar();
+    } catch (e) { fin(false); toast(e.message, 'bad'); }
+  });
+
+  engancharFormCupon(arrancado);
+  engancharDescuento();
+}
+
+function engancharFormCupon(arrancado) {
+  const g = $('#cuGuardar'); if (!g) return;
+  const ed = S.cuponForm, editando = !!(ed && ed.id);
+
+  const leer = () => ({
+    name: ($('#cuNombre')||{}).value || '',
+    sub_type: ($('#cuSub')||{}).value || 'FIXED_AMOUNT',
+    valor: +($('#cuValor')||{}).value || 0,
+    tope: +($('#cuTope')||{}).value || 0,
+    min: +($('#cuMin')||{}).value || 0,
+    presu: +($('#cuPresu')||{}).value || 0,
+    desde: ($('#cuDesde')||{}).value || '',
+    hasta: ($('#cuHasta')||{}).value || '',
+    codigo: (($('#cuCodigo')||{}).value || '').trim()
+  });
+
+  // El tipo cambia qué campos hacen falta, así que redibuja.
+  const sub = $('#cuSub');
+  if (sub) sub.onchange = () => {
+    const v = leer();
+    S.cuponForm = Object.assign({}, ed, { sub_type: sub.value, name: v.name,
+      min_purchase_amount: v.min, budget: v.presu, start_date: v.desde,
+      finish_date: v.hasta, partial_coupon_code: v.codigo });
+    render();
+  };
+
+  const repasar = () => {
+    const v = leer(), caja = $('#cuAviso'); if (!caja) return;
+    const partes = [];
+    if (v.desde && v.hasta) {
+      const dias = Math.round((Date.parse(v.hasta) - Date.parse(v.desde)) / DIA) + 1;
+      if (dias > 31) partes.push(`<div class="aviso bad"><b>Son ${dias} días.</b>
+        El plazo máximo de una campaña de cupones es 31.</div>`);
+      else if (dias < 1) partes.push(`<div class="aviso bad">La fecha de fin es anterior
+        a la de inicio.</div>`);
+      else partes.push(`<div class="aviso ok">La campaña dura <b>${dias} día${dias>1?'s':''}</b>.</div>`);
+    }
+    /* Los tres límites, contados con números. Un cupón se define por cómo
+       interactúan: la compra mínima dice desde cuánto aplica, el tope cuánto
+       es lo más que podés perder en una venta, y el presupuesto cuántas
+       ventas aguanta antes de apagarse. */
+    if (v.sub_type === 'FIXED_AMOUNT') {
+      if (v.valor && v.min)
+        partes.push(`<div class="aviso">Aplica desde <b>${pes(v.min)}</b> de compra y descuenta
+          siempre <b>${pes(v.valor)}</b>, sea cual sea el carrito. En el mínimo eso es un
+          <b>${pct((v.valor / v.min) * 100)}</b> — cuanto más grande el carrito, menos pesa.</div>`);
+      if (v.presu && v.valor)
+        partes.push(`<div class="aviso">Con ${pes(v.presu)} de presupuesto y ${pes(v.valor)} por
+          cupón, te alcanza para <b>${Math.floor(v.presu / v.valor)} ventas</b>. Cuando se agota,
+          la campaña se termina sola.</div>`);
+    } else {
+      if (v.valor && v.min)
+        partes.push(`<div class="aviso">Aplica desde <b>${pes(v.min)}</b> de compra. En el mínimo,
+          el ${v.valor}% son <b>${pes(Math.round(v.min * v.valor / 100))}</b>.</div>`);
+      // El campo se llama max_purchase_amount pero NO es un monto de compra: la
+      // doc dice "monto máximo de reintegro". Se nota en su propio ejemplo, que
+      // pone mínima 1000 y "máxima" 200 —imposible si fuera una compra—. Acá se
+      // muestra a partir de qué carrito empieza a morder, que lo deja claro.
+      if (v.valor && v.tope)
+        partes.push(`<div class="aviso">El tope corta el reintegro en <b>${pes(v.tope)}</b> por
+          venta: con ${v.valor}% de descuento empieza a morder a partir de un carrito de
+          <b>${pes(Math.round(v.tope * 100 / v.valor))}</b>. De ahí para arriba el comprador
+          sigue pagando ${pes(v.tope)} menos, no más.</div>`);
+      if (v.presu && v.tope)
+        partes.push(`<div class="aviso">Con ${pes(v.presu)} de presupuesto y un tope de
+          ${pes(v.tope)} por venta, en el peor caso te alcanza para
+          <b>${Math.floor(v.presu / v.tope)} ventas</b>.</div>`);
+      if (v.valor && v.min && !v.tope)
+        partes.push(`<div class="aviso bad">Falta el <b>tope de reintegro</b>. Sin tope, un carrito
+          grande se lleva buena parte del presupuesto en una sola venta.</div>`);
+    }
+    caja.innerHTML = partes.join('');
+  };
+  ['#cuNombre','#cuValor','#cuTope','#cuMin','#cuPresu','#cuDesde','#cuHasta'].forEach(s => {
+    const el = $(s); if (el) { el.oninput = repasar; el.onchange = repasar; }
+  });
+  repasar();
+
+  const can = $('#cuCancelar');
+  if (can) can.onclick = () => { S.cuponForm = null; render(); };
+
+  g.onclick = async () => {
+    const v = leer();
+    if (!v.name)   { toast('Falta el nombre', 'bad'); return; }
+    if (!v.presu)  { toast('Falta el presupuesto', 'bad'); return; }
+    if (!v.hasta)  { toast('Falta la fecha de fin', 'bad'); return; }
+    if (!editando || !arrancado) {
+      if (!v.valor) { toast('Falta el descuento', 'bad'); return; }
+      if (!v.min)   { toast('Falta la compra mínima', 'bad'); return; }
+      if (v.sub_type === 'FIXED_PERCENTAGE' && !v.tope) {
+        toast('En un cupón por porcentaje el tope de reintegro es obligatorio', 'bad'); return; }
+    }
+
+    const desc = v.sub_type === 'FIXED_AMOUNT' ? pes(v.valor) : v.valor + '%';
+    if (!confirm((editando ? 'Guardar cambios en "' : 'Crear el cupón "') + v.name + '"\n\n' +
+      '   descuento     ' + desc + '\n' +
+      (v.sub_type === 'FIXED_PERCENTAGE' ? '   tope          ' + pes(v.tope) + '\n' : '') +
+      '   compra mínima ' + pes(v.min) + '\n' +
+      '   presupuesto   ' + pes(v.presu) + '   (todo a tu cargo)\n' +
+      '   ' + v.desde + '  →  ' + v.hasta + '\n' +
+      (v.codigo ? '   código        ' + v.codigo + '  (Meli le pega tu nickname adelante)\n'
+                : (editando ? '' : '   sin código: lo ve cualquier comprador\n')) +
+      '\n¿Confirmás?')) return;
+
+    /* Con la campaña ya arrancada Meli solo acepta tres campos y contesta
+       "the field X not upgradable" si le llega cualquier otro. Los inputs están
+       bloqueados, pero bloqueado no es lo mismo que vacío: si igual se mandaran
+       sus valores, el PUT entero rebotaría. Así que acá se manda solo lo que
+       Meli deja tocar. El sub_type no está en la lista de editables en ningún
+       caso — el tipo de cupón no se cambia, se crea otro. */
+    var cuerpo;
+    if (editando && arrancado) {
+      cuerpo = { name: v.name, budget: v.presu, finish_date: v.hasta + 'T00:00:00' };
+    } else {
+      cuerpo = { name: v.name, min_purchase_amount: v.min, budget: v.presu,
+        start_date: v.desde + 'T00:00:00', finish_date: v.hasta + 'T00:00:00' };
+      if (v.sub_type === 'FIXED_AMOUNT') cuerpo.fixed_amount = v.valor;
+      else { cuerpo.fixed_percentage = v.valor; cuerpo.max_purchase_amount = v.tope; }
+      // El subtipo se define al crear; en un PUT no es un campo editable.
+      if (!editando) {
+        cuerpo.sub_type = v.sub_type;
+        if (v.codigo) cuerpo.partial_coupon_code = v.codigo;
+      }
+    }
+
+    const fin = ocupar(g, editando ? 'Guardando' : 'Creando', 'cupon');
+    try {
+      const r = editando
+        ? await api('cupon_editar', { promotion_id: ed.id, cambios: cuerpo })
+        : await api('cupon_crear', { cupon: cuerpo });
+      const seg = fin();
+      S.cupones = (r.lista || {}).cupones || S.cupones;
+      S.cuponesLeidos = Date.now();
+      S.cuponForm = null;
+      // Se confirma contra lo que contestó Meli, no contra lo que mandamos.
+      const c = r.cupon || {};
       S.resultado = {
-        ok: mal.length === 0 ? true : (okN ? null : false),
-        seg: seg,
-        titulo: mal.length === 0
-          ? okN + ' precios de lista actualizados'
-          : okN + ' actualizados y ' + mal.length + ' rechazados',
-        detalle: mal.length
-          ? 'Rechazados: ' + mal.slice(0,6).map(x => x.item_id + ' (' + x.error + ')').join(' · ') +
-            (mal.length > 6 ? ' y ' + (mal.length-6) + ' más' : '') + '. El detalle completo está en Registro.'
-          : 'Revisá la columna "Lista actual": tiene que coincidir con lo que pusiste.'
+        ok: true, seg,
+        titulo: editando ? 'Cupón actualizado' : 'Cupón creado',
+        detalle: '"' + (c.name || v.name) + '" · ' +
+          (c.coupon_code ? 'código ' + c.coupon_code + ' · ' : 'sin código · ') +
+          'presupuesto ' + pes(c.budget != null ? c.budget : v.presu) + ' · estado ' +
+          (c.status || '—') + '. Ahora sumale publicaciones desde su tarjeta.'
       };
+      render();
+    } catch (e) { fin(false); toast(e.message, 'bad'); }
+  };
+}
+
+function engancharDescuento() {
+  const cr = $('#dcCrear'); if (!cr) return;
+
+  // El aviso se recalcula mientras escribe, igual que en el diálogo de sumarse:
+  // es la misma regla y el mismo dato.
+  const repasar = () => {
+    const it = S.items.find(x => x.id === ($('#dcItem')||{}).value);
+    const p  = +($('#dcPrecio')||{}).value || 0;
+    const caja = $('#dcAviso'); if (!caja) return;
+    if (!it || !p) { caja.innerHTML = ''; return; }
+    const partes = [];
+    const d = it.lista ? (1 - p/it.lista)*100 : null;
+    if (d != null && d < 5)
+      partes.push(`<div class="aviso bad"><b>El descuento es de ${pct(d)}.</b> Meli exige mínimo 5%
+        sobre el precio de lista (${pes(it.lista)}): con este precio te lo va a rechazar.</div>`);
+    if (d != null && d > 80)
+      partes.push(`<div class="aviso bad"><b>El descuento es de ${pct(d)}.</b> El máximo es 80%.</div>`);
+    const cred = avisoCredibilidad(it, p);
+    if (cred) partes.push(cred);
+    const desde = ($('#dcDesde')||{}).value, hasta = ($('#dcHasta')||{}).value;
+    if (desde && hasta) {
+      const dias = Math.round((Date.parse(hasta) - Date.parse(desde)) / DIA) + 1;
+      if (dias > 14) partes.push(`<div class="aviso bad"><b>Son ${dias} días.</b> El plazo máximo
+        de un descuento individual es de 14.</div>`);
+      if (dias < 1) partes.push(`<div class="aviso bad">La fecha de fin es anterior a la de inicio.</div>`);
+    }
+    caja.innerHTML = partes.join('');
+  };
+  ['#dcItem','#dcPrecio','#dcDesde','#dcHasta'].forEach(s => {
+    const el = $(s); if (el) { el.oninput = repasar; el.onchange = repasar; }
+  });
+  repasar();
+
+  cr.onclick = async () => {
+    const id = ($('#dcItem')||{}).value;
+    const precio = +($('#dcPrecio')||{}).value || 0;
+    const top = +($('#dcTop')||{}).value || 0;
+    const desde = ($('#dcDesde')||{}).value, hasta = ($('#dcHasta')||{}).value;
+    const it = S.items.find(x => x.id === id);
+    if (!it)     { toast('Elegí una publicación', 'bad'); return; }
+    if (!precio) { toast('Falta el precio al cliente', 'bad'); return; }
+    if (!desde || !hasta) { toast('Faltan las fechas', 'bad'); return; }
+
+    const d = it.lista ? (1 - precio/it.lista)*100 : 0;
+    if (!confirm('Descuento propio en ' + (it.sku || id) + ' — ' + cuotasPub(it) + '\n\n' +
+      '   lista       ' + pes(it.lista) + '\n' +
+      '   al cliente  ' + pes(precio) + '   (−' + pct(d) + ')\n' +
+      (top ? '   MP 3–6     ' + pes(top) + '\n' : '') +
+      '   ' + desde + '  →  ' + hasta + '\n\n' +
+      'Este descuento SÍ cuenta para la ventana de credibilidad.\n\n¿Confirmás?')) return;
+
+    const cuerpo = { item_id: id, promotion_type: 'PRICE_DISCOUNT', deal_price: precio,
+      start_date: desde + 'T00:00:00', finish_date: hasta + 'T23:59:59' };
+    if (top) cuerpo.top_deal_price = top;
+
+    const fin = ocupar(cr, 'Creando', 'descuento');
+    try {
+      const r = await api('sumar', cuerpo);
+      const seg = fin();
+      S.resultado = Object.assign({ seg }, verificar('sumar', cuerpo, r.filas));
       await cargar();
     } catch (e) { fin(false); toast(e.message, 'bad'); }
   };
@@ -2163,7 +2883,9 @@ function abrirSumar(o) {
     <div id="fCred"></div>
     ${p.tipo==='PRICE_DISCOUNT'?`<div class="aviso">Máximo 14 días. Descuento entre 5% y 80%.
       Si el ítem ya está en un DEAL, no se aplica hasta que el DEAL termine.</div>`:''}`}
-    ${ligh?`<div class="aviso bad">Una vez activa, la relámpago <b>no se puede eliminar</b>. Solo pausar el ítem.</div>`:''}`;
+    ${ligh?`<div class="aviso bad">Mientras esté <b>programada</b> la podés eliminar. Una vez que
+      arranca ya no: el único camino es pausar la publicación entera. Además, cuando se agota el
+      stock que reservaste, Meli da la oferta por terminada sola.</div>`:''}`;
 
   const calc = () => {
     const el = $('#fCalc'); if (!el) return;
