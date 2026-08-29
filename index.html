@@ -83,6 +83,7 @@ main{min-width:0;display:flex;flex-direction:column}
 [hidden]{display:none!important}
 .frescura .ver{font:400 10px "JetBrains Mono";color:var(--ink3);background:var(--panel3);
   padding:2px 5px;border-radius:4px;margin-left:4px}
+.frescura .ver.desfasado{background:var(--badbg);color:var(--bad);font-weight:600}
 .wrap{padding:20px 22px 60px;display:flex;flex-direction:column;gap:16px}
 
 .btn{border:1px solid var(--line2);background:var(--panel);border-radius:6px;padding:7px 13px;cursor:pointer;
@@ -312,7 +313,7 @@ const S = {
 /* Subilo cada vez que cambie el archivo. Sirve para saber, mirando la app,
    si el navegador está sirviendo la versión nueva o una cacheada: GitHub Pages
    guarda el index.html un rato y es fácil quedarse con el viejo sin notarlo. */
-const VERSION = '2026.08.29-12';
+const VERSION = '2026.08.29-14';
 const VENTANA = 7;
 const $  = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
@@ -1722,7 +1723,11 @@ async function escribir(accion, body, mensaje, boton) {
     const r = await api(accion, body);
     const seg = fin();
     if (!parchar(body.item_id, r && r.filas)) cargar();
-    toast(mensaje + ' · ' + seg + 's', 'ok');
+    // El backend informa en qué se fue el tiempo: Meli, la planilla o el log.
+    const d = r && r.ms
+      ? ' · Meli ' + (r.ms.meli/1000).toFixed(1) + 's + planilla ' +
+        ((r.ms.refresco + r.ms.log)/1000).toFixed(1) + 's' : '';
+    toast(mensaje + ' · ' + seg + 's' + d, 'ok');
   } catch (e) { fin(false); throw e; }
 }
 
@@ -1751,7 +1756,25 @@ function pintarFrescura(u) {
   el.innerHTML = 'Datos de <b>' + esc(cuando) + '</b> · ' + edad +
     ' · ' + (u.publicaciones||0) + ' publicaciones' +
     (clase ? ' — <b>sincronizá antes de decidir</b>' : '') +
-    ' <span class="ver" title="Versión del archivo index.html que está corriendo">v' + VERSION + '</span>';
+    ' <span class="ver" title="Versión del index.html que está corriendo en el navegador">v' + VERSION + '</span>' +
+    versionBackChip();
+}
+
+/**
+ * La versión del backend, al lado de la del front.
+ *
+ * El /exec sirve la última versión IMPLEMENTADA, no la que tenés pegada en el
+ * editor. Si te olvidás de "Implementar → Versión nueva", la app sigue usando
+ * código viejo y no hay forma de darse cuenta. Ahora sí.
+ */
+function versionBackChip() {
+  const vb = S.data && S.data.versionBack;
+  if (!vb) return ' <span class="ver" title="El backend implementado es anterior a esta comprobación. Hacé Implementar → Versión nueva.">back: ?</span>';
+  const igual = vb === VERSION;
+  return ' <span class="ver' + (igual ? '' : ' desfasado') + '" title="' +
+    (igual ? 'Front y backend en la misma versión.'
+           : 'El backend implementado (' + vb + ') no coincide con el front (' + VERSION + '). Hacé Implementar → Versión nueva en Apps Script.') +
+    '">back ' + esc(vb) + (igual ? '' : ' ◄ desactualizado') + '</span>';
 }
 
 /* ═══ carga ═══ */
@@ -1773,7 +1796,11 @@ $('#sync').onclick = async () => {
   const fin = ocupar($('#sync'), 'Sincronizando', 'sync');
   try { const r = await api('sync');
     const seg = fin();
-    toast(r.publicaciones + ' publicaciones y ' + r.filas + ' promociones · ' + seg + 's','ok');
+    // Si Meli frenó por rate limit, decirlo: explica por qué tardó más.
+    const fr = r.rate && r.rate.r429
+      ? ' · Meli frenó ' + r.rate.r429 + ' llamadas (lote bajó a ' + r.rate.menorTam + ')' : '';
+    toast(r.publicaciones + ' publicaciones y ' + r.filas + ' promociones · ' + seg + 's' + fr,
+          r.rate && r.rate.r429 ? 'warn' : 'ok');
     await cargar(); }
   catch (e) { fin(false); toast(e.message,'bad'); }
 };

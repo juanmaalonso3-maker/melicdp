@@ -49,6 +49,16 @@ const TZ        = 'America/Argentina/Buenos_Aires';
 
 const P = PropertiesService.getScriptProperties();
 
+/**
+ * Versión del backend. Subila cuando cambies este archivo.
+ *
+ * El editor ejecuta SIEMPRE el código que ves; el /exec ejecuta la última
+ * VERSIÓN IMPLEMENTADA, que puede ser mucho más vieja. Eso hacía que el mismo
+ * sync tardara 15 segundos desde el editor y 33 desde la app, sin ninguna
+ * pista de por qué. Ahora la app muestra las dos versiones y el desfasaje se ve.
+ */
+const VERSION_BACK = '2026.08.29-14';
+
 
 /* ═══════════════════════════════════════════════════════════════════════════
    2 · AUTORIZACIÓN
@@ -190,13 +200,25 @@ const LOTE = 40;
  * Los 429 (rate limit) y 401 (token vencido) se reintentan solo con las rutas
  * que fallaron, no con el lote entero.
  */
+// Contadores de la última corrida, para saber si Meli nos está frenando.
+var _RATE = { r429: 0, reintentos: 0, lotes: 0, menorTam: 0 };
+
 function mlGetMuchos(rutas, intento) {
   intento = intento || 1;
+  if (intento === 1) _RATE = { r429: 0, reintentos: 0, lotes: 0, menorTam: LOTE };
   const salida = {}, fallaron = [];
   const token  = getToken();          // una sola vez para todo el lote
 
-  for (var i = 0; i < rutas.length; i += LOTE) {
-    const tanda = rutas.slice(i, i + LOTE);
+  // El tamaño del lote se achica solo si Meli empieza a rechazar.
+  //
+  // Subirlo de 25 a 40 parecía gratis, pero si Meli contesta 429 el precio es
+  // carísimo: se duerme 1,5 s y se reintenta. Cuarenta llamadas juntas que
+  // rebotan cuestan más que dos tandas de veinte que pasan. Ante el primer 429
+  // se parte el lote al medio y se sigue con ese tamaño.
+  var tam = LOTE;
+
+  for (var i = 0; i < rutas.length; ) {
+    const tanda = rutas.slice(i, i + tam);
     const reqs  = tanda.map(function (p) {
       return {
         url: ML.API_HOST + p, method: 'get',
@@ -207,8 +229,10 @@ function mlGetMuchos(rutas, intento) {
 
     var res;
     try { res = UrlFetchApp.fetchAll(reqs); }
-    catch (e) { tanda.forEach(function (p) { fallaron.push(p); }); continue; }
+    catch (e) { tanda.forEach(function (p) { fallaron.push(p); }); i += tanda.length; continue; }
+    _RATE.lotes++;
 
+    var freno = false;
     res.forEach(function (r, k) {
       const c = r.getResponseCode();
       if (c === 200) {
@@ -216,16 +240,25 @@ function mlGetMuchos(rutas, intento) {
         catch (e) { fallaron.push(tanda[k]); }
       } else if (c === 401 || c === 429 || c === 423) {
         if (c === 401) P.setProperty('ML_EXPIRA_EN', '0');
+        if (c === 429) { _RATE.r429++; freno = true; }
         fallaron.push(tanda[k]);
       }
       // Cualquier otro código (404, 403) es una respuesta legítima de "no hay":
       // no se reintenta, queda como hueco.
     });
 
-    if (i + LOTE < rutas.length) Utilities.sleep(120);   // respiro entre lotes
+    i += tanda.length;
+    if (freno) {
+      tam = Math.max(10, Math.floor(tam / 2));
+      _RATE.menorTam = Math.min(_RATE.menorTam, tam);
+      Utilities.sleep(700);
+    } else if (i < rutas.length) {
+      Utilities.sleep(120);                              // respiro entre lotes
+    }
   }
 
   if (fallaron.length && intento <= 2) {
+    _RATE.reintentos += fallaron.length;
     Utilities.sleep(1500 * intento);
     const seg = mlGetMuchos(fallaron, intento + 1);
     Object.keys(seg).forEach(function (k) { salida[k] = seg[k]; });
@@ -692,6 +725,10 @@ function sincronizarTodo() {
     ok: true, cuando: new Date().toISOString(), publicaciones: ids.length,
     campanias: camps.length, filas: filas.length, errores: errores,
     cacheUsado: golpes, cacheNuevo: nuevos,
+    // Si Meli frenó, acá se ve: r429 son los rechazos por rate limit y
+    // reintentos las llamadas que hubo que repetir. Con esos dos números se
+    // sabe si el lote quedó grande.
+    rate: _RATE,
     segundos: Math.round((Date.now() - t0) / 1000),
     etapas: marca
   };
@@ -706,7 +743,7 @@ function sincronizarTodo() {
    ═══════════════════════════════════════════════════════════════════════════ */
 
 function leerSnapshot() {
-  const ss = SpreadsheetApp.openById(SHEET_ID);
+  const ss = _ss();
   const datos = _leerHoja(ss, 'Datos');
   const camps = _leerHoja(ss, 'Campanias');
   // El Histórico crece 162 filas por día y el reloj solo mira los últimos días:
@@ -737,6 +774,7 @@ function leerSnapshot() {
 
   return {
     generado: new Date().toISOString(),
+    versionBack: VERSION_BACK,
     ultimaSync: JSON.parse(P.getProperty('ULTIMA_SYNC') || '{}'),
     datos: datos, campanias: camps, reloj: reloj, log: log, etiquetas: etiquetas
   };
@@ -784,7 +822,7 @@ function _leerHoja(ss, nombre) {
  * pudo, en cuyo caso el front recarga como antes.
  */
 function _refrescarItem(id) {
-  const ss = SpreadsheetApp.openById(SHEET_ID);
+  const ss = _ss();
   const sh = ss.getSheetByName('Datos');
   if (!sh || sh.getLastRow() < 2) return null;
 
@@ -803,17 +841,13 @@ function _refrescarItem(id) {
   try { promos = _arr(mlGet('/seller-promotions/items/' + id + '?app_version=v2')); }
   catch (e) { Logger.log('refrescar ' + id + ': ' + e); return null; }
 
-  // La ventana de una relámpago no baja al ítem: se pide solo si falta.
+  // La ventana de una relámpago no baja al ítem. Antes se le pedía a Meli el
+  // listado entero de la campaña —76 ítems— en CADA escritura, y eso costaba un
+  // segundo y medio de gusto: la ventana no cambia porque entres o salgas de
+  // otra promoción. Se reusa la que ya está en la hoja; el sync la refresca.
   const ventanas = {};
-  promos.forEach(function (p) {
-    if (p.start_date || VENTANA_POR_ITEM.indexOf(String(p.type)) < 0) return;
-    try {
-      _arr(mlGet('/seller-promotions/promotions/' + p.id + '/items?promotion_type=' +
-                 encodeURIComponent(p.type) + '&app_version=v2')).forEach(function (x) {
-        if (x && String(x.id) === String(id) && (x.start_date || x.finish_date))
-          ventanas[String(p.id)] = [_fechaAR(x.start_date), _fechaAR(x.finish_date)];
-      });
-    } catch (e) {}
+  viejas.forEach(function (r) {
+    if (r[24] || r[25]) ventanas[String(r[12])] = [r[24], r[25]];
   });
 
   const nuevas = promos.map(function (p) {
@@ -851,7 +885,7 @@ function _refrescarItem(id) {
  */
 function refrescarSku(sku) {
   const t0 = Date.now();
-  const ss = SpreadsheetApp.openById(SHEET_ID);
+  const ss = _ss();
   const sh = ss.getSheetByName('Datos');
   if (!sh || sh.getLastRow() < 2) return { ok: false, error: 'sin datos' };
 
@@ -996,21 +1030,42 @@ function sumarAPromo(a) {
     body.deal_price = Number(a.deal_price);
   }
 
+  // Se cronometra cada tramo: si algún día vuelve a tardar, el log dice dónde.
+  const t0 = Date.now();
   const r = _mlEscribir('post', '/seller-promotions/items/' + a.item_id + '?app_version=v2', body);
-  _log('sumar', a.item_id, tipo + ' ' + (a.promotion_id || '') + ' @ ' + (a.deal_price || 'acepta'),
-       r.ok ? 'OK' : 'ERROR ' + r.code + ' ' + r.texto);
-  if (!r.ok) throw new Error(_mensajeError(r));
-  return { ok: true, body: r.body, filas: _refrescarItem(a.item_id) };
+  const tEscritura = Date.now() - t0;
+  if (!r.ok) {
+    _log('sumar', a.item_id, tipo + ' ' + (a.promotion_id || ''), 'ERROR ' + r.code + ' ' + r.texto);
+    throw new Error(_mensajeError(r));
+  }
+  const t1 = Date.now();
+  const filas = _refrescarItem(a.item_id);
+  const tRefresco = Date.now() - t1;
+  const t2 = Date.now();
+  _log('sumar', a.item_id, tipo + ' ' + (a.promotion_id || '') + ' @ ' + (a.deal_price || 'acepta'), 'OK');
+  const ms = { meli: tEscritura, refresco: tRefresco, log: Date.now() - t2, total: Date.now() - t0 };
+  Logger.log('sumar ' + a.item_id + ' → ' + JSON.stringify(ms));
+  return { ok: true, body: r.body, filas: filas, ms: ms };
 }
 
 function salirDePromo(a) {
   var qs = '?app_version=v2&promotion_type=' + encodeURIComponent(a.promotion_type);
   if (a.promotion_id) qs += '&promotion_id=' + encodeURIComponent(a.promotion_id);
+  const t0 = Date.now();
   const r = _mlEscribir('delete', '/seller-promotions/items/' + a.item_id + qs, null);
-  _log('salir', a.item_id, a.promotion_type + ' ' + (a.promotion_id || ''),
-       r.ok ? 'OK' : 'ERROR ' + r.code + ' ' + r.texto);
-  if (!r.ok) throw new Error(_mensajeError(r));
-  return { ok: true, filas: _refrescarItem(a.item_id) };
+  const tEscritura = Date.now() - t0;
+  if (!r.ok) {
+    _log('salir', a.item_id, a.promotion_type + ' ' + (a.promotion_id || ''), 'ERROR ' + r.code + ' ' + r.texto);
+    throw new Error(_mensajeError(r));
+  }
+  const t1 = Date.now();
+  const filas = _refrescarItem(a.item_id);
+  const tRefresco = Date.now() - t1;
+  const t2 = Date.now();
+  _log('salir', a.item_id, a.promotion_type + ' ' + (a.promotion_id || ''), 'OK');
+  const ms = { meli: tEscritura, refresco: tRefresco, log: Date.now() - t2, total: Date.now() - t0 };
+  Logger.log('salir ' + a.item_id + ' → ' + JSON.stringify(ms));
+  return { ok: true, filas: filas, ms: ms };
 }
 
 function ejecutarLote(acciones) {
@@ -1056,8 +1111,24 @@ function _log(accion, item, detalle, resultado) {
    8 · HOJAS
    ═══════════════════════════════════════════════════════════════════════════ */
 
+/**
+ * La planilla, abierta UNA sola vez por ejecución.
+ *
+ * SpreadsheetApp.openById() tarda cerca de un segundo y _hoja() la abría de
+ * nuevo en cada llamada. Un "sumar" terminaba abriéndola tres veces —una para
+ * refrescar el ítem, otra para el Log, otra para las etiquetas— y eso solo eran
+ * ~3 segundos de los 10 que tardaba. La variable vive lo que dura la ejecución,
+ * que es exactamente el alcance que queremos.
+ */
+var _SS = null, _SH = {};
+function _ss() {
+  if (!_SS) _SS = SpreadsheetApp.openById(SHEET_ID);
+  return _SS;
+}
+
 function _hoja(nombre, cabecera) {
-  const ss = SpreadsheetApp.openById(SHEET_ID);
+  if (_SH[nombre]) return _SH[nombre];
+  const ss = _ss();
   var sh = ss.getSheetByName(nombre);
   if (!sh) {
     sh = ss.insertSheet(nombre);
@@ -1065,6 +1136,7 @@ function _hoja(nombre, cabecera) {
       .setFontWeight('bold').setBackground('#EEF2F1');
     sh.setFrozenRows(1);
   }
+  _SH[nombre] = sh;
   return sh;
 }
 
