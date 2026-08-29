@@ -60,6 +60,8 @@ aside{background:var(--panel);border-right:1px solid var(--line);display:flex;fl
 .nav[aria-current="true"]{background:var(--acc2);color:var(--acc);font-weight:700}
 .nav .b{margin-left:auto;font:600 10.5px "JetBrains Mono";background:var(--panel3);color:var(--ink2);padding:1px 6px;border-radius:20px}
 .nav[aria-current="true"] .b{background:var(--acc);color:var(--panel)}
+.nav-sep{font:600 9.5px "JetBrains Mono";letter-spacing:.12em;text-transform:uppercase;
+  color:var(--ink3);padding:14px 10px 5px;margin-top:6px;border-top:1px solid var(--line)}
 .side-foot{margin-top:auto;padding:12px 10px 0;border-top:1px solid var(--line);display:flex;flex-direction:column;gap:8px}
 .side-foot small{color:var(--ink3);font-size:11px;line-height:1.45}
 
@@ -200,6 +202,56 @@ tbody tr:last-child td{border-bottom:0}
 .prog i{display:block;height:100%;background:var(--acc)}
 .prog.done i{background:var(--ok)}
 
+/* ── tablero de estados: las tarjetas de arriba del listado ── */
+.tablero{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:11px}
+.tab-salud{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);
+  padding:14px 16px;display:flex;flex-direction:column;gap:2px;cursor:pointer;text-align:left;
+  box-shadow:var(--shadow);transition:border-color .12s,transform .12s;position:relative;overflow:hidden}
+.tab-salud:hover{transform:translateY(-1px)}
+.tab-salud::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--line2)}
+.tab-salud.sin::before{background:var(--bad)}
+.tab-salud.parcial::before{background:var(--warn)}
+.tab-salud.relampago::before{background:var(--acc)}
+.tab-salud.ok::before{background:var(--ok)}
+.tab-salud .n{font-family:"JetBrains Mono";font-weight:600;font-size:26px;line-height:1.1;
+  font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+.tab-salud .t{font-family:"Bricolage Grotesque";font-weight:700;font-size:13px}
+.tab-salud .s{font-size:11px;color:var(--ink3);line-height:1.35}
+.tab-salud.on{border-color:var(--acc);box-shadow:0 0 0 2px var(--acc2)}
+.tab-salud.sin .n{color:var(--bad)}
+.tab-salud.parcial .n{color:var(--warn)}
+.tab-salud.relampago .n{color:var(--acc)}
+.tab-salud.ok .n{color:var(--ok)}
+
+/* ── listado de productos ── */
+.listado td{vertical-align:middle}
+.listado tbody tr{cursor:pointer}
+.listado tbody tr:hover{background:var(--panel2)}
+.listado .mini{width:38px;height:38px;object-fit:contain;border-radius:5px;background:var(--panel2);display:block}
+.listado .sub{font:400 11px "JetBrains Mono";color:var(--ink3);margin-top:2px}
+.listado b{font-size:13px}
+.listado .ver-mas{font-size:11.5px;color:var(--acc);white-space:nowrap;opacity:0;transition:opacity .12s}
+.listado tbody tr:hover .ver-mas{opacity:1}
+
+/* ── editor de precios ── */
+.abre-precio.activa{background:var(--acc2)}
+.fila-precio td{padding:0!important;background:var(--panel2)}
+.editor{padding:16px 18px;display:flex;flex-direction:column;gap:13px;border-left:3px solid var(--acc)}
+.ed-cab{display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap}
+.ed-cab b{font-family:"Bricolage Grotesque";font-size:15px}
+.ed-desc{margin-left:auto;display:flex;flex-direction:column;gap:4px;
+  font:600 10.5px "JetBrains Mono";letter-spacing:.08em;text-transform:uppercase;color:var(--ink3)}
+.ed-desc span{display:flex;align-items:center;gap:6px;font:400 13px "JetBrains Mono";
+  text-transform:none;letter-spacing:0;color:var(--ink)}
+.ed-desc input{width:74px;text-align:right;font:600 17px "JetBrains Mono";padding:7px 9px;
+  border:1px solid var(--line2);border-radius:6px;background:var(--panel);color:var(--ink)}
+.tprecios input{width:120px;text-align:right;font:400 13px "JetBrains Mono";padding:6px 9px;
+  border:1px solid var(--line2);border-radius:6px;background:var(--panel);color:var(--ink)}
+.tprecios input:focus{outline:2px solid var(--acc);outline-offset:1px}
+.tprecios .pLista{font-size:14px}
+.ed-pie{display:flex;gap:14px;align-items:center;flex-wrap:wrap}
+.sub{font:400 11px "JetBrains Mono";color:var(--ink3);margin-top:2px}
+
 .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:11px}
 .kpi{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:13px 15px;display:flex;flex-direction:column;gap:2px}
 .kpi .k{font:400 10px/1 "JetBrains Mono";letter-spacing:.09em;text-transform:uppercase;color:var(--ink3)}
@@ -253,9 +305,11 @@ dialog::backdrop{background:rgba(10,18,16,.55)}
   <aside>
     <div class="brand"><b>CDP Kenta</b><span>Central de Promociones</span></div>
     <nav>
-      <button class="nav" data-v="sku" aria-current="true">Por SKU <span class="b" id="bS">0</span></button>
-      <button class="nav" data-v="sinpromo">Sin promo <span class="b" id="bH">0</span></button>
-      <button class="nav" data-v="oportunidades">Oportunidades <span class="b" id="bO">0</span></button>
+      <button class="nav" data-v="listado">Listado de productos <span class="b" id="bL">0</span></button>
+      <button class="nav" data-v="sku" aria-current="true">Ver un producto <span class="b" id="bS">0</span></button>
+      <button class="nav" data-v="sinpromo">Sin oferta hoy <span class="b" id="bH">0</span></button>
+      <button class="nav" data-v="precios">Actualizar precios</button>
+      <div class="nav-sep">Referencia</div>
       <button class="nav" data-v="tarjetas">Campañas <span class="b" id="bT">0</span></button>
       <button class="nav" data-v="credibilidad">Credibilidad <span class="b" id="bC">0</span></button>
       <button class="nav" data-v="registro">Registro</button>
@@ -307,13 +361,13 @@ dialog::backdrop{background:rgba(10,18,16,.55)}
 const S = {
   url: localStorage.getItem('cdp_url') || '',
   key: localStorage.getItem('cdp_key') || '',
-  data:null, filas:[], items:[], skus:[], camps:[], reloj:{}, log:[], oport:[], etiquetas:{},
-  vista:'sku', q:'', skuSel: localStorage.getItem('cdp_sku') || '', campFiltro:null, sel:new Set()
+  data:null, filas:[], items:[], skus:[], camps:[], reloj:{}, log:[], etiquetas:{},
+  vista:'listado', q:'', filtroSalud:'todos', precioSku:null, descGlobal:30, skuSel: localStorage.getItem('cdp_sku') || '', campFiltro:null, sel:new Set()
 };
 /* Subilo cada vez que cambie el archivo. Sirve para saber, mirando la app,
    si el navegador está sirviendo la versión nueva o una cacheada: GitHub Pages
    guarda el index.html un rato y es fácil quedarse con el viejo sin notarlo. */
-const VERSION = '2026.08.29-18';
+const VERSION = '2026.08.30-19';
 const VENTANA = 7;
 const $  = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
@@ -400,6 +454,26 @@ const ACEPTAR_SOLO = ['MARKETPLACE_CAMPAIGN','SMART','PRICE_MATCHING','PRE_NEGOT
  * En el resto (co-fondeadas, DEAL, relámpago) "pending" sí es programada.
  */
 const ACUERDA_ACEPTA = ['PRE_NEGOTIATED','UNHEALTHY_STOCK'];
+
+/* ═══════════════════════════════════════════════════════════
+   SALUD DE UN PRODUCTO
+   Tres estados, ordenados por urgencia. Es lo que decide el color en el
+   listado y lo que cuenta el tablero de arriba.
+   ═══════════════════════════════════════════════════════════ */
+const SALUD = {
+  sin:       { txt:'Sin oferta',        clase:'bad',  ayuda:'Ninguna publicación de este producto muestra descuento hoy. Se vende a precio de lista.' },
+  parcial:   { txt:'A medias',          clase:'warn', ayuda:'Algunas publicaciones tienen oferta y otras no. Las que no, se ven caras al lado de las que sí.' },
+  relampago: { txt:'Falta relámpago',   clase:'acc',  ayuda:'Tiene ofertas corriendo, pero hay relámpagos disponibles sin aceptar: es exposición gratis que estás dejando pasar.' },
+  ok:        { txt:'Al día',            clase:'ok',   ayuda:'Todas las publicaciones muestran oferta hoy y no hay relámpagos pendientes.' }
+};
+const ORDEN_SALUD = { sin:0, parcial:1, relampago:2, ok:3 };
+
+function saludDe(g) {
+  if (g.nVig === 0)            return 'sin';
+  if (g.nVig < g.pubs.length)  return 'parcial';
+  if (g.nRelampago > 0)        return 'relampago';
+  return 'ok';
+}
 
 /* ═══════════════════════════════════════════════════════════
    VIGENCIA · cuál de todas las promos manda hoy en la vidriera
@@ -624,26 +698,21 @@ function procesar(d) {
       nProp: pubs.reduce((a,p) => a + p.propuestas.length, 0),
       nCat:  pubs.filter(p => p.catalogo).length,
       nVig:  pubs.filter(p => p.vigente).length,
+      // Relámpago disponible y sin aceptar: exposición gratis que estás dejando pasar.
+      nRelampago: pubs.reduce((a,p) => a + p.candidatas.filter(x => x.tipo === 'LIGHTNING').length, 0),
+      nSinDefinir: pubs.filter(p => !etiquetaDe(p) && !p.cuotas).length,
       nTap:  pubs.reduce((a,p) => a + p.tapadas.length, 0),
       nFut:  pubs.reduce((a,p) => a + p.futuras.length, 0)
     };
-  }).sort((a,b) => a.sku.localeCompare(b.sku, 'es', {numeric:true}));
+  }).map(g => Object.assign(g, { salud: saludDe(g) }))
+    .sort((a,b) => (ORDEN_SALUD[a.salud] - ORDEN_SALUD[b.salud]) ||
+                   a.sku.localeCompare(b.sku, 'es', {numeric:true}));
 
   // huérfanas: hoy no muestran oferta. Las que tienen una programada para más
   // adelante entran igual —hoy no venden con descuento— pero se marcan aparte.
   S.huerfanas = S.items.filter(it => it.sinVigente)
     .sort((a,b) => (b.lista||0) - (a.lista||0));
 
-  // oportunidades
-  S.oport = [];
-  S.items.forEach(it => it.candidatas.forEach(p => {
-    if (!p.max || !it.lista) return;
-    const ref = it.precioActivo;
-    S.oport.push({ it, p,
-      brechaSug: ref && p.sug ? p.sug - ref : null,
-      brechaTecho: ref ? p.max - ref : null });
-  }));
-  S.oport.sort((a,b) => (b.brechaSug ?? -1e12) - (a.brechaSug ?? -1e12));
 }
 
 /* ══ router ══ */
@@ -654,15 +723,90 @@ function render() {
             : 'Primero configurá la URL del Apps Script y la clave.');
     return;
   }
+  $('#bL').textContent = S.skus.length;
   $('#bS').textContent = S.skus.length;
   $('#bH').textContent = S.huerfanas.length;
-  $('#bO').textContent = S.oport.filter(o => (o.brechaSug ?? 0) > 0).length;
   $('#bT').textContent = S.camps.length;
   $('#bC').textContent = S.items.filter(i => i.dias != null && i.dias > 0 && i.dias < VENTANA).length;
-  ({sku:vSku, sinpromo:vSinPromo, oportunidades:vOport, tarjetas:vCamp,
+  ({listado:vListado, sku:vSku, sinpromo:vSinPromo, precios:vPrecios, tarjetas:vCamp,
     credibilidad:vCred, registro:vLog})[S.vista]();
 }
 const vacio = (t,p) => `<div class="panel"><div class="empty"><b>${t}</b><p>${p}</p></div></div>`;
+
+/* ═══════════════════════════════════════════════════════════
+   LISTADO DE PRODUCTOS
+   La pantalla de entrada: los 28 productos, el estado de cada uno, y un
+   tablero arriba para filtrar por lo que hay que hacer.
+   ═══════════════════════════════════════════════════════════ */
+function vListado() {
+  $('#tit').textContent = 'Listado de productos';
+  const filtro = S.filtroSalud || 'todos';
+  const cuenta = k => S.skus.filter(g => g.salud === k).length;
+
+  const visibles = (filtro === 'todos' ? S.skus : S.skus.filter(g => g.salud === filtro))
+    .filter(g => !S.q || (g.sku + ' ' + g.titulo).toLowerCase().includes(S.q.toLowerCase()));
+
+  const tarjeta = (k, titulo, sub) => {
+    const n = k === 'todos' ? S.skus.length : cuenta(k);
+    const act = filtro === k;
+    return `<button class="tab-salud ${k}${act?' on':''}" data-salud="${k}"
+      title="${k==='todos'?'Todos los productos':esc(SALUD[k].ayuda)}">
+      <span class="n">${n}</span><span class="t">${titulo}</span><span class="s">${sub}</span></button>`;
+  };
+
+  const fila = g => {
+    const s = SALUD[g.salud];
+    const rango = g.pubs.map(p => p.lista).filter(Boolean);
+    return `<tr data-sku="${esc(g.sku)}" class="fila-sku">
+      <td>${g.foto?`<img class="mini" src="${esc(g.foto)}" alt="" loading="lazy">`:''}</td>
+      <td><b>${esc(g.titulo.slice(0,52))}</b>
+        <div class="sub">SKU ${esc(g.sku)} · ${g.pubs.length} publicaciones${g.nCat?` · ${g.nCat} de catálogo`:''}</div></td>
+      <td><span class="chip ${s.clase}" title="${esc(s.ayuda)}">${s.txt}</span></td>
+      <td class="c n">${g.nVig} de ${g.pubs.length}</td>
+      <td class="c">${g.nRelampago?`<span class="chip acc" title="Relámpagos disponibles sin aceptar">⚡ ${g.nRelampago}</span>`:'<span style="color:var(--ink3)">—</span>'}</td>
+      <td class="c n">${g.nCand}</td>
+      <td class="r n">${rango.length?pes(Math.min(...rango)):'—'}</td>
+      <td class="r n">${num(g.stock)}</td>
+      <td class="r"><span class="ver-mas">abrir →</span></td>
+    </tr>`;
+  };
+
+  $('#wrap').innerHTML = `
+    <div class="tablero">
+      ${tarjeta('todos','Todos','productos')}
+      ${tarjeta('sin','Sin oferta','ninguna publicación con descuento')}
+      ${tarjeta('parcial','A medias','algunas publicaciones sin oferta')}
+      ${tarjeta('relampago','Falta relámpago','exposición gratis sin usar')}
+      ${tarjeta('ok','Al día','nada que hacer')}
+    </div>
+
+    <div class="buscador">
+      <input type="text" id="qlista" placeholder="Buscar por nombre o SKU" value="${esc(S.q)}" autocomplete="off">
+      <span style="color:var(--ink3);font-size:12px">${visibles.length} de ${S.skus.length}</span>
+    </div>
+
+    ${visibles.length ? `<div class="panel"><div class="scroll"><table class="listado">
+      <thead><tr>
+        <th></th><th>Producto</th><th>Estado</th>
+        <th class="c">Con oferta</th><th class="c">Relámpago</th><th class="c">Disponibles</th>
+        <th class="r">Desde</th><th class="r">Stock</th><th></th>
+      </tr></thead>
+      <tbody>${visibles.map(fila).join('')}</tbody>
+    </table></div></div>`
+    : vacio('Nada por acá', 'Ningún producto coincide con el filtro.')}`;
+
+  $$('[data-salud]').forEach(b => b.onclick = () => {
+    S.filtroSalud = b.dataset.salud === S.filtroSalud ? 'todos' : b.dataset.salud;
+    render();
+  });
+  $$('.fila-sku').forEach(t => t.onclick = () => {
+    S.skuSel = t.dataset.sku; S.q = '';
+    localStorage.setItem('cdp_sku', S.skuSel); ir('sku');
+  });
+  const i = $('#qlista');
+  if (i) { let t; i.oninput = e => { clearTimeout(t);
+    t = setTimeout(() => { S.q = e.target.value.trim(); render(); const c=$('#qlista'); if(c) c.focus(); }, 250); }; }
+}
 
 /* ═══════════════════════════════════════════════════════════
    VISTA 1 · POR SKU
@@ -1458,58 +1602,6 @@ function mejorCandidata(it) {
   return c.slice().sort((a,b) => (b.max||b.sug||b.precio||0) - (a.max||a.sug||a.precio||0))[0];
 }
 
-/* ═══ VISTA 3 · OPORTUNIDADES ═══ */
-function vOport() {
-  $('#tit').textContent = 'Oportunidades';
-  let lista = S.oport;
-  if (S.campFiltro) lista = lista.filter(o => o.p.promoId === S.campFiltro);
-  const conB = lista.filter(o => (o.brechaSug ?? 0) > 0);
-  const total = conB.reduce((a,o) => a + o.brechaSug, 0);
-
-  const filas = lista.map((o,i) => {
-    const {it,p} = o;
-    const st = o.brechaSug == null ? ['mut','sin referencia']
-             : o.brechaSug > 0     ? ['bad','estás regalando']
-             : o.brechaTecho > 0   ? ['warn','margen al techo'] : ['ok','bien calibrado'];
-    return `<tr>
-      <td><b style="font-size:12px">${esc(it.titulo.slice(0,42))}</b>
-        <div style="font:400 10px 'JetBrains Mono';color:var(--ink3)">SKU ${esc(it.sku)} · ${esc(cuotasPub(it))}</div></td>
-      <td><span class="chip mut">${esc(p.tipo)}</span><div style="font-size:10.5px;color:var(--ink3);margin-top:2px">${esc((p.promo||'').slice(0,22))}</div></td>
-      <td class="r n">${pes(it.lista)}</td>
-      <td class="r n">${pes(it.precioActivo)}<div style="font-size:10.5px;color:var(--ink3)">${it.descActivo?'−'+pct(it.descActivo):''}</div></td>
-      <td class="r n">${pes(p.max)}<div style="font-size:10.5px;color:var(--ink3)">mín −${pct(p.pisoPct)}</div></td>
-      <td class="r n">${pes(p.sug)}<div style="font-size:10.5px;color:var(--ink3)">${p.sugPct?'−'+pct(p.sugPct):''}</div></td>
-      <td class="r n" style="color:${o.brechaSug>0?'var(--bad)':'var(--ink3)'};font-weight:600">
-        ${o.brechaSug!=null?(o.brechaSug>0?'+':'')+num(o.brechaSug):'—'}</td>
-      <td><span class="chip ${st[0]}">${st[1]}</span></td>
-      <td class="r"><button class="btn xs" data-op="${i}">Sumar</button>
-        <button class="btn xs" data-goto="${esc(it.sku)}">SKU</button></td>
-    </tr>`;
-  }).join('');
-
-  $('#wrap').innerHTML = `
-    <div class="kpis">
-      <div class="kpi"><span class="k">Candidaturas</span><span class="v">${lista.length}</span><span class="d">publicación × campaña</span></div>
-      <div class="kpi hot"><span class="k">Con brecha</span><span class="v">${conB.length}</span><span class="d">por debajo del sugerido</span></div>
-      <div class="kpi hot"><span class="k">Brecha total</span><span class="v">${num(total)}</span><span class="d">pesos por unidad</span></div>
-    </div>
-    ${S.campFiltro?`<div class="aviso">Filtrando por una campaña. <a href="#" id="limpC">Ver todas</a></div>`:''}
-    <div class="panel"><h3>Ordenadas por brecha
-      <span class="hint">Comparado contra el precio más bajo al que vendés hoy</span></h3>
-      <div class="scroll"><table>
-        <thead><tr><th>Publicación</th><th>Campaña</th><th class="r">Lista</th><th class="r">Hoy</th>
-        <th class="r">Techo</th><th class="r">Sugerido</th><th class="r">Brecha/u</th><th>Estado</th><th></th></tr></thead>
-        <tbody>${filas || '<tr><td colspan="9"><div class="empty"><b>Nada por acá</b><p>No hay candidaturas abiertas.</p></div></td></tr>'}</tbody>
-      </table></div></div>`;
-
-  if ($('#limpC')) $('#limpC').onclick = e => { e.preventDefault(); S.campFiltro=null; render(); };
-  $$('[data-op]').forEach(b => b.onclick = () => abrirSumar(lista[+b.dataset.op]));
-  $$('[data-goto]').forEach(b => b.onclick = () => {
-    S.skuSel = b.dataset.goto; S.q=''; localStorage.setItem('cdp_sku',S.skuSel); ir('sku');
-  });
-}
-
-/* ═══ VISTA 3 · CAMPAÑAS ═══ */
 function vCamp() {
   $('#tit').textContent = 'Campañas';
   const cards = S.camps.map(c => {
@@ -1536,6 +1628,176 @@ function vCamp() {
     </div>`).join('') || vacio('Sin campañas','No hay campañas abiertas.')}</div>`;
 
   $$('[data-camp]').forEach(b => b.onclick = () => { S.campFiltro = b.dataset.camp; ir('oportunidades'); });
+}
+
+/* ═══════════════════════════════════════════════════════════
+   ACTUALIZACIÓN DE PRECIOS
+   El precio de lista no se escribe a mano: se arma desde el precio que querés
+   que vea el cliente y el descuento que querés mostrar.
+       lista = target / (1 − descuento)
+   Con target $129.999 y 30%, la lista es $185.713 — la misma cuenta de tu
+   planilla. Cada escalón de cuotas tiene su propio target.
+   ═══════════════════════════════════════════════════════════ */
+const listaDesde = (target, desc) =>
+  (!target || desc >= 100) ? null : Math.round(target / (1 - desc / 100));
+
+/** Los escalones de un SKU: catálogo y propia del mismo precio son uno solo. */
+function escalonesDe(g) {
+  const m = new Map();
+  g.pubs.forEach(p => {
+    const k = p.listingType + '|' + p.lista;
+    if (!m.has(k)) m.set(k, { lista: p.lista, tipo: p.listingType, etiqueta: cuotasPub(p), pubs: [] });
+    m.get(k).pubs.push(p);
+  });
+  return [...m.values()].sort((a,b) => a.lista - b.lista);
+}
+
+function vPrecios() {
+  $('#tit').textContent = 'Actualizar precios';
+  const abierto = S.precioSku;
+  const desc = S.descGlobal ?? 30;
+
+  const filtrados = S.skus.filter(g =>
+    !S.q || (g.sku + ' ' + g.titulo).toLowerCase().includes(S.q.toLowerCase()));
+
+  const editor = g => {
+    const esc2 = escalonesDe(g);
+    return `<tr class="fila-precio"><td colspan="5"><div class="editor">
+      <div class="ed-cab">
+        <div><b>${esc(g.titulo)}</b><div class="sub">SKU ${esc(g.sku)} · ${esc2.length} escalones · ${g.pubs.length} publicaciones</div></div>
+        <label class="ed-desc">Descuento a mostrar
+          <span><input type="number" id="edDesc" value="${desc}" min="0" max="95" step="1"> %</span></label>
+      </div>
+
+      <div class="aviso">Escribí <b>a cuánto querés vendérselo al cliente</b>. El precio de lista sale
+        solo: <code id="edFormula">target ÷ (1 − ${desc}%)</code>. Es la misma cuenta de tu planilla.</div>
+
+      <div class="scroll"><table class="tprecios">
+        <thead><tr>
+          <th>Escalón</th><th class="r">Precio al cliente</th><th class="r">Precio de lista</th>
+          <th class="r">Lista actual</th><th class="c">Cambio</th><th></th>
+        </tr></thead>
+        <tbody>${esc2.map((e,i) => {
+          const target = Math.round(e.lista * (1 - desc/100));
+          return `<tr data-esc="${i}">
+            <td><b>${esc(e.etiqueta)}</b>
+              <div class="sub">${esc(tipoLabel(e.tipo))} · ${e.pubs.length} pub${e.pubs.length>1?'s':''}</div></td>
+            <td class="r"><input type="number" class="pTarget" data-i="${i}" value="${target}" step="1"></td>
+            <td class="r n"><b class="pLista" data-i="${i}">${pes(e.lista)}</b></td>
+            <td class="r n" style="color:var(--ink3)">${pes(e.lista)}</td>
+            <td class="c"><span class="pDelta" data-i="${i}" style="color:var(--ink3);font-size:11.5px">sin cambio</span></td>
+            <td class="r"><span class="sub">${e.pubs.map(p=>p.id).join('<br>')}</span></td>
+          </tr>`;
+        }).join('')}</tbody>
+      </table></div>
+
+      <div class="ed-pie">
+        <div class="aviso bad" style="flex:1;margin:0">
+          <b>Antes de tocar precios, sacá las ofertas.</b> Si subís la lista con promociones puestas,
+          Meli te las saca igual pero la base de credibilidad queda anclada al precio viejo:
+          perdés la promo y no arrancás el reloj de los ${VENTANA} días.
+        </div>
+        <button class="btn p" id="edAplicar">Aplicar a Mercado Libre</button>
+      </div>
+    </div></td></tr>`;
+  };
+
+  $('#wrap').innerHTML = `
+    <div class="aviso ok">El precio de lista se arma desde el precio final que querés y el descuento
+      que querés mostrar. Elegí un producto para editar sus escalones.</div>
+
+    <div class="buscador">
+      <input type="text" id="qprecio" placeholder="Buscar por nombre o SKU" value="${esc(S.q)}" autocomplete="off">
+      <span style="color:var(--ink3);font-size:12px">${filtrados.length} de ${S.skus.length}</span>
+    </div>
+
+    <div class="panel"><div class="scroll"><table class="listado">
+      <thead><tr><th>Producto</th><th class="c">Escalones</th><th class="r">Lista más baja</th>
+        <th class="r">Lista más alta</th><th></th></tr></thead>
+      <tbody>${filtrados.map(g => {
+        const l = g.pubs.map(p => p.lista).filter(Boolean);
+        return `<tr class="abre-precio${abierto===g.sku?' activa':''}" data-sku="${esc(g.sku)}">
+          <td><b>${esc(g.titulo.slice(0,52))}</b><div class="sub">SKU ${esc(g.sku)}</div></td>
+          <td class="c n">${escalonesDe(g).length}</td>
+          <td class="r n">${l.length?pes(Math.min(...l)):'—'}</td>
+          <td class="r n">${l.length?pes(Math.max(...l)):'—'}</td>
+          <td class="r"><span class="ver-mas">${abierto===g.sku?'cerrar':'editar precios'}</span></td>
+        </tr>` + (abierto===g.sku ? editor(g) : '');
+      }).join('')}</tbody>
+    </table></div></div>`;
+
+  engancharPrecios();
+}
+
+function engancharPrecios() {
+  $$('.abre-precio').forEach(t => t.onclick = () => {
+    S.precioSku = S.precioSku === t.dataset.sku ? null : t.dataset.sku;
+    render();
+  });
+  const i = $('#qprecio');
+  if (i) { let t; i.oninput = e => { clearTimeout(t);
+    t = setTimeout(() => { S.q = e.target.value.trim(); render(); const c=$('#qprecio'); if(c) c.focus(); }, 250); }; }
+
+  const g = S.skus.find(x => x.sku === S.precioSku);
+  if (!g) return;
+  const esc2 = escalonesDe(g);
+
+  // Recalcula la columna de lista sin volver a dibujar toda la pantalla:
+  // así se puede tipear de corrido sin que salte el foco.
+  const recalcular = () => {
+    const d = +($('#edDesc')||{}).value || 0;
+    const f = $('#edFormula'); if (f) f.textContent = `target ÷ (1 − ${d}%)`;
+    $$('.pTarget').forEach(inp => {
+      const idx = +inp.dataset.i, e = esc2[idx];
+      const nueva = listaDesde(+inp.value, d);
+      const celda = $(`.pLista[data-i="${idx}"]`), delta = $(`.pDelta[data-i="${idx}"]`);
+      if (celda) celda.textContent = nueva ? pes(nueva) : '—';
+      if (!delta) return;
+      // Tolerancia de 2 pesos: ida y vuelta por el redondeo puede dar $1 de
+      // diferencia sin que hayas tocado nada, y eso no es un cambio.
+      if (!nueva || Math.abs(nueva - e.lista) <= 2) {
+        delta.textContent = 'sin cambio'; delta.style.color = 'var(--ink3)'; return;
+      }
+      const dif = nueva - e.lista, pc = (dif / e.lista) * 100;
+      delta.textContent = (dif > 0 ? '▲ ' : '▼ ') + pes(Math.abs(dif)) + '  (' + pct(Math.abs(pc)) + ')';
+      delta.style.color = dif > 0 ? 'var(--ok)' : 'var(--bad)';
+    });
+  };
+  $$('.pTarget').forEach(inp => inp.oninput = recalcular);
+  const d = $('#edDesc');
+  if (d) d.oninput = () => { S.descGlobal = +d.value || 0; recalcular(); };
+  recalcular();
+
+  const ap = $('#edAplicar');
+  if (ap) ap.onclick = async () => {
+    const dd = +($('#edDesc')||{}).value || 0;
+    const cambios = [];
+    $$('.pTarget').forEach(inp => {
+      const idx = +inp.dataset.i, e = esc2[idx];
+      const nueva = listaDesde(+inp.value, dd);
+      if (nueva && Math.abs(nueva - e.lista) > 2)
+        cambios.push({ item_ids: e.pubs.map(p => p.id), precio: nueva, etiqueta: e.etiqueta, antes: e.lista });
+    });
+    if (!cambios.length) { toast('No hay ningún precio distinto del actual', 'warn'); return; }
+
+    const detalle = cambios.map(c =>
+      '   ' + c.etiqueta + ':  ' + pes(c.antes) + '  →  ' + pes(c.precio) +
+      '   (' + c.item_ids.length + ' publicación' + (c.item_ids.length>1?'es':'') + ')').join('\n');
+    if (!confirm('Se van a cambiar ' + cambios.length + ' precios de lista en Mercado Libre:\n\n' +
+      detalle + '\n\nOJO: si estas publicaciones tienen ofertas corriendo, Meli las va a sacar y la ' +
+      'base de credibilidad queda anclada al precio viejo.\n\n¿Confirmás?')) return;
+
+    const fin = ocupar(ap, 'Aplicando', 'precios');
+    try {
+      const r = await api('precios', { cambios: cambios.map(c => ({ item_ids: c.item_ids, precio: c.precio })) });
+      const okN = (r.resultados||[]).filter(x => x.ok).length;
+      const mal = (r.resultados||[]).filter(x => !x.ok);
+      fin();
+      toast(okN + ' publicaciones actualizadas' + (mal.length?` · ${mal.length} fallaron`:''), mal.length?'warn':'ok');
+      if (mal.length) mal.slice(0,3).forEach(x => toast(x.item_id + ': ' + x.error, 'bad'));
+      await cargar();
+    } catch (e) { fin(false); toast(e.message, 'bad'); }
+  };
 }
 
 /* ═══ VISTA 4 · CREDIBILIDAD ═══ */
@@ -1906,7 +2168,7 @@ $('#recargar').onclick = cargar;
 function ir(v) {
   S.vista = v;
   $$('.nav').forEach(n => n.setAttribute('aria-current', n.dataset.v===v ? 'true':'false'));
-  if (v !== 'oportunidades') S.campFiltro = null;
+  if (v !== 'listado') S.campFiltro = null;
   render();
 }
 $$('.nav').forEach(n => n.onclick = () => ir(n.dataset.v));

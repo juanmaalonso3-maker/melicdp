@@ -57,7 +57,7 @@ const P = PropertiesService.getScriptProperties();
  * sync tardara 15 segundos desde el editor y 33 desde la app, sin ninguna
  * pista de por qué. Ahora la app muestra las dos versiones y el desfasaje se ve.
  */
-const VERSION_BACK = '2026.08.29-18';
+const VERSION_BACK = '2026.08.30-19';
 
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -363,6 +363,7 @@ function doPost(e) {
       case 'etiqueta': return _json({ ok: true, data: guardarEtiqueta(body.item_ids || body.item_id, body.texto) });
       case 'etiquetas': return _json({ ok: true, data: (body.lote || []).map(function (x) {
                           return guardarEtiqueta(x.item_ids, x.texto); }) });
+      case 'precios':  return _json({ ok: true, data: actualizarPrecios(body.cambios || []) });
       case 'sumar': return _json({ ok: true, data: sumarAPromo(body) });
       case 'salir': return _json({ ok: true, data: salirDePromo(body) });
       case 'lote':  return _json({ ok: true, data: ejecutarLote(body.acciones || []) });
@@ -1045,6 +1046,32 @@ function guardarEtiqueta(itemId, texto) {
   });
   if (nuevas.length) sh.getRange(sh.getLastRow() + 1, 1, nuevas.length, 3).setValues(nuevas);
   return { ok: true, item_ids: ids, etiqueta: t };
+}
+
+/**
+ * Cambia el precio de lista de varias publicaciones.
+ *
+ * OJO con el orden: si la publicación tiene ofertas corriendo, Meli las saca al
+ * cambiar el precio, pero la base de credibilidad queda anclada al precio viejo
+ * — perdés la promoción y no arrancás el reloj. El front avisa antes; acá se
+ * registra cada cambio en el Log para poder reconstruir qué pasó.
+ */
+function actualizarPrecios(cambios) {
+  const salida = [];
+  cambios.forEach(function (c) {
+    const precio = Number(c.precio);
+    if (!precio || precio <= 0) return;
+    (c.item_ids || []).forEach(function (id) {
+      const r = _mlEscribir('put', '/items/' + id, { price: precio });
+      _log('precio', id, 'lista → ' + precio, r.ok ? 'OK' : 'ERROR ' + r.code + ' ' + r.texto);
+      salida.push(r.ok
+        ? { item_id: id, ok: true, precio: precio }
+        : { item_id: id, ok: false, error: _mensajeError(r) });
+      Utilities.sleep(150);          // Meli no quiere ráfagas de escritura
+    });
+  });
+  return { ok: true, resultados: salida,
+           cambiadas: salida.filter(function (x) { return x.ok; }).length };
 }
 
 function sumarAPromo(a) {
