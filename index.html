@@ -173,6 +173,8 @@ tbody tr:last-child td{border-bottom:0}
 .pub-h{padding:13px 16px;border-bottom:1px solid var(--line);display:flex;gap:12px;align-items:center;flex-wrap:wrap;
   background:var(--panel2)}
 .pub-h .cuota{font-family:"Bricolage Grotesque";font-weight:700;font-size:14.5px}
+.pub-h .lapiz{font-size:10.5px;padding:3px 8px;opacity:.55}
+.pub-h .lapiz:hover{opacity:1}
 .pub-h .id{font:400 10.5px "JetBrains Mono";color:var(--ink3)}
 .pub-h .sep{margin-left:auto;display:flex;gap:14px;align-items:center;flex-wrap:wrap;font-size:12px}
 .pub-h .sep b{font-family:"JetBrains Mono";font-variant-numeric:tabular-nums}
@@ -304,13 +306,13 @@ dialog::backdrop{background:rgba(10,18,16,.55)}
 const S = {
   url: localStorage.getItem('cdp_url') || '',
   key: localStorage.getItem('cdp_key') || '',
-  data:null, filas:[], items:[], skus:[], camps:[], reloj:{}, log:[], oport:[],
+  data:null, filas:[], items:[], skus:[], camps:[], reloj:{}, log:[], oport:[], etiquetas:{},
   vista:'sku', q:'', skuSel: localStorage.getItem('cdp_sku') || '', campFiltro:null, sel:new Set()
 };
 /* Subilo cada vez que cambie el archivo. Sirve para saber, mirando la app,
    si el navegador está sirviendo la versión nueva o una cacheada: GitHub Pages
    guarda el index.html un rato y es fácil quedarse con el viejo sin notarlo. */
-const VERSION = '2026.08.28-10';
+const VERSION = '2026.08.29-12';
 const VENTANA = 7;
 const $  = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
@@ -347,9 +349,23 @@ const nombrePromo = x => x.promo || NOMBRE_TIPO[x.tipo] || x.tipo || '—';
  *  cuando la hoja todavía tiene los nombres de columna viejos. */
 const nn = v => (v === '' || v == null || isNaN(+v)) ? null : +v;
 
+/**
+ * Cómo se llama la opción de cuota de una publicación.
+ *
+ * Prioridad: la etiqueta que pusiste vos → la campaña de cuotas que trae Meli
+ * ("3x_campaign") → nada.
+ *
+ * Ojo con el "Contado" de antes: era una conclusión, no un dato. La API solo
+ * informa las cuotas cuando LAS PAGÁS VOS (sale_terms INSTALLMENTS_CAMPAIGN).
+ * Las que ofrece el banco no son un atributo de la publicación y no hay
+ * endpoint que las devuelva, así que decir "Contado" ahí era inventar.
+ */
+const etiquetaDe = p => (S.etiquetas && S.etiquetas[String(p.id)]) || '';
+const cuotasPub = p => etiquetaDe(p) || cuotasLabel(p.cuotas) || 'sin definir';
+
 const cuotasLabel = c => {
   const t = String(c || '').trim();
-  if (!t) return 'Contado';
+  if (!t) return '';
   const m = t.match(/(\d+)/);
   return m ? m[1] + ' cuotas' : t;
 };
@@ -500,6 +516,7 @@ function armarFamilia(pubs) {
 
 function procesar(d) {
   S.data = d; S.camps = d.campanias || []; S.reloj = d.reloj || {}; S.log = d.log || [];
+  S.etiquetas = d.etiquetas || {};
   const vence = {}, fechaCamp = {};
   S.camps.forEach(c => {
     vence[c.promo_id] = c.vence_aceptacion;
@@ -751,6 +768,8 @@ function heroSku(g) {
     <div class="txt">
       <span class="sk">SKU ${esc(g.sku)}
         <button class="btn xs" id="refSku" title="Vuelve a pedirle a Meli solo las publicaciones de este SKU. Mucho más rápido que sincronizar la cuenta entera.">actualizar este SKU</button>
+        ${(() => { const pr = sugerirEscalera(g); return pr.length
+          ? `<button class="btn xs p" id="sugCuotas" title="Meli no informa el escalón de 6 cuotas. Se deduce del precio de lista, usando como anclas los escalones que sí informa.">deducir cuotas (${pr.length})</button>` : ''; })()}
       </span>
       <h2>${esc(g.titulo)}</h2>
       <div class="stats">
@@ -798,7 +817,7 @@ function matrizSku(g) {
     return `<tr><td style="${i?'padding-left:22px':''}">
       <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
         ${i?'<span style="color:var(--ink3);font-size:11px">└</span>':''}
-        <b style="font-size:12.5px">${esc(cuotasLabel(p.cuotas))}</b>
+        <b style="font-size:12.5px">${esc(cuotasPub(p))}</b>
         ${p.catalogo ? '<span class="chip cat">catálogo</span>' : ''}
         ${p.vigente ? '' : '<span class="chip bad">hoy sin oferta</span>'}</div>
       <div style="font:400 10px 'JetBrains Mono';color:var(--ink3);margin-top:2px">${esc(tipoLabel(p.listingType))} · ${pes(p.lista)}</div>
@@ -853,12 +872,60 @@ function estadoDe(x) {
    dando la foto completa.
    ═══════════════════════════════════════════════════════════ */
 const etiquetaPub = p => [
-  cuotasLabel(p.cuotas),
+  cuotasPub(p),
   tipoLabel(p.listingType),
   p.catalogo ? '★ catálogo' : 'propia',
   pes(p.lista),
   p.vigente ? 'con oferta' : p.proxima ? 'arranca ' + fecha(p.proxima.inicio) : 'SIN OFERTA'
 ].join(' · ');
+
+/* ═══════════════════════════════════════════════════════════
+   ESCALERA DE CUOTAS
+   Mercado Libre tiene campañas de 3, 9 y 12 cuotas — de 6 no. Por eso el
+   escalón de 6 llega siempre vacío desde la API, en todos los productos.
+   Pero el precio de lista lo delata: dentro de un SKU, las Premium suben
+   ordenadas por cantidad de cuotas, porque el financiamiento se absorbe
+   inflando la lista. Con los escalones que la API sí informa como anclas, el
+   hueco se deduce solo. Es una propuesta, no un dato: se confirma con un click.
+   ═══════════════════════════════════════════════════════════ */
+const ESCALERA = [3, 6, 9, 12, 18, 24];
+
+function sugerirEscalera(g) {
+  const num = p => { const m = String(p.cuotas || '').match(/(\d+)/); return m ? +m[1] : null; };
+  // Las publicaciones espejo (catálogo y propia) son el mismo escalón.
+  const escalones = new Map();
+  g.pubs.forEach(p => {
+    const k = p.listingType + '|' + p.lista;
+    if (!escalones.has(k)) escalones.set(k, {lista:p.lista, tipo:p.listingType, pubs:[], sabe:null});
+    const e = escalones.get(k);
+    e.pubs.push(p);
+    if (num(p) != null) e.sabe = num(p);
+  });
+
+  const prem = [...escalones.values()].filter(e => e.tipo === 'gold_pro')
+    .sort((a,b) => a.lista - b.lista);
+
+  const props = [];
+
+  // Las Clásicas no pueden llevar campaña de cuotas: son el escalón de contado.
+  [...escalones.values()].filter(e => e.tipo === 'gold_special' && e.sabe == null)
+    .forEach(e => {
+      if (e.pubs.every(p => !etiquetaDe(p)))
+        props.push({ etiqueta: 'Contado', lista: e.lista, ids: e.pubs.map(p => p.id) });
+    });
+  var ultimo = null;                     // última cantidad de cuotas asignada
+  prem.forEach(e => {
+    if (e.sabe != null) { ultimo = e.sabe; return; }
+    if (ultimo == null) return;          // sin ancla debajo no se arriesga nada
+    const sig = ESCALERA.find(n => n > ultimo);
+    if (sig == null) return;
+    ultimo = sig;
+    // Solo se propone donde todavía no hay etiqueta puesta a mano.
+    if (e.pubs.every(p => !etiquetaDe(p)))
+      props.push({ etiqueta: sig + ' cuotas', lista: e.lista, ids: e.pubs.map(p => p.id) });
+  });
+  return props;
+}
 
 function pubElegida(g) {
   const guardado = localStorage.getItem('cdp_pub_' + g.sku);
@@ -922,7 +989,7 @@ function bloquePub(p, g, esCabeza) {
       ? '<span class="chip cat" title="Publicación de catálogo: compite por la caja de compra y da mucha más exposición">★ catálogo</span>'
       : '<span class="chip mut" title="Publicación propia, no compite en catálogo">publicación propia</span>',
     `<span class="chip mut">${esc(tipoLabel(p.listingType))}</span>`,
-    `<span class="chip ${p.cuotas?'acc':'mut'}">${esc(cuotasLabel(p.cuotas))}</span>`,
+    `<span class="chip ${p.cuotas?'acc':'mut'}">${esc(cuotasPub(p))}</span>`,
     p.envioGratis ? '<span class="chip mut">envío gratis</span>' : '<span class="chip mut">envío comprador</span>'
   ].filter(Boolean).join('');
 
@@ -1008,7 +1075,9 @@ function bloquePub(p, g, esCabeza) {
 
   return `<div class="pub${p.catalogo?' escat':''}${esCabeza?' cab':''}">
     <div class="pub-h">
-      <span class="cuota">${esc(cuotasLabel(p.cuotas))}</span>
+      <span class="cuota">${esc(cuotasPub(p))}</span>
+      <button class="btn xs lapiz" data-etq="${esc(p.id)}"
+        title="Meli no expone por API la opción de cuota de esta publicación. Escribila una vez y queda guardada.">${etiquetaDe(p)?'editar':'poner cuotas'}</button>
       ${p.vigente ? '<span class="chip ok">con oferta hoy</span>'
         : p.proxima ? '<span class="chip warn">arranca ' + fecha(p.proxima.inicio) + '</span>'
         : '<span class="chip bad">sin oferta hoy</span>'}
@@ -1083,6 +1152,45 @@ function engancharBuscador() {
 }
 
 function engancharAcciones() {
+  const sc = $('#sugCuotas');
+  if (sc) sc.onclick = async () => {
+    const g = S.skus.find(x => x.sku === S.skuSel);
+    const props = sugerirEscalera(g);
+    if (!props.length) return;
+    const detalle = props.map(p => '   ' + pes(p.lista) + '  →  ' + p.etiqueta +
+      (p.ids.length > 1 ? '  (' + p.ids.length + ' publicaciones)' : '')).join('\n');
+    if (!confirm('Deducido del precio de lista del SKU ' + g.sku + ':\n\n' + detalle +
+      '\n\nMercado Libre informa los escalones de 3, 9 y 12 cuotas pero no el de 6.\n' +
+      'Estos salen de ordenar por precio y completar el hueco.\n\n¿Los guardo? Después podés corregir cualquiera a mano.')) return;
+    const fin = ocupar(sc, 'Guardando', 'etiqueta');
+    try {
+      await api('etiquetas', { lote: props.map(p => ({ item_ids: p.ids, texto: p.etiqueta })) });
+      props.forEach(p => p.ids.forEach(id => { S.etiquetas[id] = p.etiqueta; }));
+      fin(); toast(props.length + ' escalones etiquetados', 'ok'); render();
+    } catch (e) { fin(false); toast(e.message, 'bad'); }
+  };
+  // La opción de cuota se escribe a mano: la API no la informa (ver paso11).
+  $$('[data-etq]').forEach(b => b.onclick = async () => {
+    const it = S.items.find(x => x.id === b.dataset.etq);
+    if (!it) return;
+    const actual = (S.etiquetas || {})[it.id] || '';
+    // El espejo catálogo/propia es la misma oferta publicada dos veces: mismo
+    // precio de lista y mismo tipo. Se etiquetan juntas para no cargar el doble.
+    const g = S.skus.find(x => x.sku === it.sku);
+    const hermanas = g ? g.pubs.filter(x => x.lista === it.lista && x.listingType === it.listingType) : [it];
+    const txt = prompt('¿En cuántas cuotas se vende esta publicación?\n\n' +
+      tipoLabel(it.listingType) + ' · ' + pes(it.lista) +
+      (hermanas.length > 1 ? '\n\nSon ' + hermanas.length + ' publicaciones con este precio (catálogo y propia): se etiquetan las dos.' : '\n' + it.id) +
+      '\n\nEscribí por ejemplo "6 cuotas" o "Contado". Vacío la borra.', actual);
+    if (txt === null) return;
+    const fin = ocupar(b, 'Guardando', 'etiqueta');
+    try {
+      await api('etiqueta', { item_ids: hermanas.map(x => x.id), texto: txt });
+      hermanas.forEach(x => { S.etiquetas[x.id] = String(txt).trim(); });
+      fin(); toast(hermanas.length > 1 ? hermanas.length + ' publicaciones etiquetadas' : 'Etiqueta guardada', 'ok');
+      render();
+    } catch (e) { fin(false); toast(e.message, 'bad'); }
+  });
   // Traer de Meli solo este SKU: ~1 s contra los ~15 del sync completo.
   const rs = $('#refSku');
   if (rs) rs.onclick = async () => {
@@ -1165,7 +1273,7 @@ function vSinPromo() {
       : `<span style="color:var(--ink3);font-size:11px">sin histórico</span>`;
     return `<tr>
       <td class="n"><b>${esc(it.sku || '—')}</b></td>
-      <td><span class="chip ${it.cuotas?'acc':'mut'}">${esc(cuotasLabel(it.cuotas))}</span>
+      <td><span class="chip ${etiquetaDe(it)||it.cuotas?'acc':'mut'}">${esc(cuotasPub(it))}</span>
         ${it.catalogo?'<div style="margin-top:3px"><span class="chip cat">★ catálogo</span></div>':''}</td>
       <td><b style="font-size:12px">${esc(it.titulo.slice(0,44))}</b>
         <div style="font:400 10px 'JetBrains Mono';color:var(--ink3)">${esc(it.id)} · ${esc(tipoLabel(it.listingType))}${it.catalogo?' · catálogo':''}</div></td>
@@ -1272,7 +1380,7 @@ function vOport() {
              : o.brechaTecho > 0   ? ['warn','margen al techo'] : ['ok','bien calibrado'];
     return `<tr>
       <td><b style="font-size:12px">${esc(it.titulo.slice(0,42))}</b>
-        <div style="font:400 10px 'JetBrains Mono';color:var(--ink3)">SKU ${esc(it.sku)} · ${esc(cuotasLabel(it.cuotas))}</div></td>
+        <div style="font:400 10px 'JetBrains Mono';color:var(--ink3)">SKU ${esc(it.sku)} · ${esc(cuotasPub(it))}</div></td>
       <td><span class="chip mut">${esc(p.tipo)}</span><div style="font-size:10.5px;color:var(--ink3);margin-top:2px">${esc((p.promo||'').slice(0,22))}</div></td>
       <td class="r n">${pes(it.lista)}</td>
       <td class="r n">${pes(it.precioActivo)}<div style="font-size:10.5px;color:var(--ink3)">${it.descActivo?'−'+pct(it.descActivo):''}</div></td>
@@ -1371,7 +1479,7 @@ function vCred() {
             <td class="n"><b>${esc(g.sku)}</b></td>
             <td>${g.pubs.map(p => `<div style="font-size:11.5px;display:flex;gap:6px;align-items:center">
               <span class="chip ${p.activas.length?'ok':'mut'}">${p.activas.length?'con oferta':'sin oferta'}</span>
-              ${esc(cuotasLabel(p.cuotas))} · ${pes(p.lista)}
+              ${esc(cuotasPub(p))} · ${pes(p.lista)}
               ${p.muestras?`<span style="color:var(--ink3)">${p.dias}/${VENTANA}d</span>`:''}</div>`).join('')}</td>
             <td style="font-size:12px;color:var(--ink2)">${esc(plan)}</td>
             <td class="r"><button class="btn xs" data-goto="${esc(g.sku)}">Abrir</button></td>
@@ -1423,7 +1531,7 @@ function abrirSumar(o) {
   $('#sBody').innerHTML = `
     <div class="rango"><span>${esc(it.titulo.slice(0,44))}</span></div>
     <div class="rango">
-      <span class="chip acc">${esc(cuotasLabel(it.cuotas))}</span>
+      <span class="chip acc">${esc(cuotasPub(it))}</span>
       <span>Lista <b class="n">${pes(it.lista)}</b></span>
       ${it.precioActivo?`<span>Hoy <b class="n">${pes(it.precioActivo)}</b></span>`:''}
       <span class="chip mut">${esc(p.tipo)}</span></div>
@@ -1471,7 +1579,7 @@ function abrirManual(it) {
   $('#sBody').innerHTML = `
     <div class="rango"><span>${esc(it.titulo.slice(0,44))}</span></div>
     <div class="rango">
-      <span class="chip acc">${esc(cuotasLabel(it.cuotas))}</span>
+      <span class="chip acc">${esc(cuotasPub(it))}</span>
       <span class="chip mut">SKU ${esc(it.sku||'—')}</span>
       <span>Lista <b class="n">${pes(it.lista)}</b></span>
       <span>Stock <b class="n">${num(it.stock)}</b></span></div>
