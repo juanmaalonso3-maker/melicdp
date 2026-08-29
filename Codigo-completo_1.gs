@@ -57,7 +57,17 @@ const P = PropertiesService.getScriptProperties();
  * sync tardara 15 segundos desde el editor y 33 desde la app, sin ninguna
  * pista de por qué. Ahora la app muestra las dos versiones y el desfasaje se ve.
  */
-const VERSION_BACK = '2026.08.30-19';
+const VERSION_BACK = '2026.08.30-20';
+
+/**
+ * Contrato: qué sabe responder este backend.
+ *   1 · datos, sync, sumar, salir, lote
+ *   2 · sku, etiqueta, etiquetas
+ *   3 · precios
+ * El front avisa si lo implementado tiene un contrato menor al que necesita.
+ * Subir SOLO al agregar o cambiar una acción, no en cada retoque.
+ */
+const CONTRATO = 3;
 
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -810,6 +820,7 @@ function leerSnapshot() {
   return {
     generado: new Date().toISOString(),
     versionBack: VERSION_BACK,
+    contrato: CONTRATO,
     ultimaSync: JSON.parse(P.getProperty('ULTIMA_SYNC') || '{}'),
     datos: datos, campanias: camps, reloj: reloj, log: log, etiquetas: etiquetas
   };

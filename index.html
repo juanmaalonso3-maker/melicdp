@@ -230,6 +230,10 @@ tbody tr:last-child td{border-bottom:0}
 .listado .mini{width:38px;height:38px;object-fit:contain;border-radius:5px;background:var(--panel2);display:block}
 .listado .sub{font:400 11px "JetBrains Mono";color:var(--ink3);margin-top:2px}
 .listado b{font-size:13px}
+.resultado{display:flex;gap:12px;align-items:flex-start}
+.resultado .ico{font:700 15px/1.3 "Bricolage Grotesque";flex:none;width:20px;text-align:center}
+.resultado>div{flex:1}
+.resultado .btn{flex:none}
 .barra-sel{display:flex;gap:14px;align-items:center;flex-wrap:wrap;padding:11px 16px;
   border-bottom:1px solid var(--line);background:var(--panel2);font-size:12.5px}
 .barra-sel label{display:flex;gap:6px;align-items:center;cursor:pointer}
@@ -379,7 +383,10 @@ const S = {
 /* Subilo cada vez que cambie el archivo. Sirve para saber, mirando la app,
    si el navegador está sirviendo la versión nueva o una cacheada: GitHub Pages
    guarda el index.html un rato y es fácil quedarse con el viejo sin notarlo. */
-const VERSION = '2026.08.30-20';
+const VERSION = '2026.08.30-22';
+/* Qué necesita el front del backend. Subir SOLO cuando se agrega o cambia una
+   acción del /exec, no en cada retoque visual. */
+const CONTRATO_MINIMO = 3;
 const VENTANA = 7;
 const $  = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
@@ -739,7 +746,20 @@ function procesar(d) {
 }
 
 /* ══ router ══ */
+/**
+ * Vuelve a dibujar sin perder dónde estabas.
+ *
+ * Cada sincronización redibuja la pantalla entera y te tiraba al principio de
+ * la tabla — con 64 relámpagos en la lista, eso es perder el hilo. Se guarda la
+ * posición y se restaura en el mismo cuadro, así no se ve el salto.
+ */
 function render() {
+  const y = window.scrollY;
+  _render();
+  if (y) requestAnimationFrame(() => window.scrollTo(0, y));
+}
+
+function _render() {
   if (!S.data) {
     $('#wrap').innerHTML = vacio('Sin datos todavía',
       S.url ? 'Tocá <b>Sincronizar con Meli</b> para traer publicaciones y promociones.'
@@ -754,6 +774,14 @@ function render() {
   $('#bC').textContent = S.items.filter(i => i.dias != null && i.dias > 0 && i.dias < VENTANA).length;
   ({listado:vListado, sku:vSku, sinpromo:vSinPromo, relampago:vRelampago, precios:vPrecios, tarjetas:vCamp,
     credibilidad:vCred, registro:vLog})[S.vista]();
+
+  // El resultado de la última escritura va arriba de todo, en todas las vistas.
+  const ban = bannerResultado();
+  if (ban) {
+    $('#wrap').insertAdjacentHTML('afterbegin', ban);
+    const c = $('#cerrarRes');
+    if (c) c.onclick = () => { S.resultado = null; render(); };
+  }
 }
 const vacio = (t,p) => `<div class="panel"><div class="empty"><b>${t}</b><p>${p}</p></div></div>`;
 
@@ -1826,9 +1854,20 @@ function vRelampago() {
       const res = await api('lote', { acciones });
       const ok = (res||[]).filter(x => x.ok).length;
       const mal = (res||[]).filter(x => !x.ok);
-      fin();
-      toast(ok + ' sumadas' + (mal.length?` · ${mal.length} fallaron`:''), mal.length?'warn':'ok');
-      mal.slice(0,3).forEach(x => toast(x.item_id + ': ' + x.error, 'bad'));
+      const seg = fin();
+      // Con un lote no alcanza un toast: hay que poder leer cuáles fallaron y
+      // por qué, sin que se vaya solo.
+      S.resultado = {
+        ok: mal.length === 0 ? true : (ok ? null : false),
+        seg: seg,
+        titulo: mal.length === 0
+          ? ok + ' publicaciones sumadas a relámpago'
+          : ok + ' sumadas y ' + mal.length + ' rechazadas',
+        detalle: mal.length
+          ? 'Rechazadas: ' + mal.slice(0,6).map(x => x.item_id + ' (' + x.error + ')').join(' · ') +
+            (mal.length > 6 ? ' y ' + (mal.length-6) + ' más' : '') + '. El detalle completo está en Registro.'
+          : 'Verificalas en la tabla de abajo: tienen que haber pasado a "ya adentro".'
+      };
       sel.clear();
       await cargar();
     } catch (e) { fin(false); toast(e.message,'bad'); }
@@ -1997,9 +2036,18 @@ function engancharPrecios() {
       const r = await api('precios', { cambios: cambios.map(c => ({ item_ids: c.item_ids, precio: c.precio })) });
       const okN = (r.resultados||[]).filter(x => x.ok).length;
       const mal = (r.resultados||[]).filter(x => !x.ok);
-      fin();
-      toast(okN + ' publicaciones actualizadas' + (mal.length?` · ${mal.length} fallaron`:''), mal.length?'warn':'ok');
-      if (mal.length) mal.slice(0,3).forEach(x => toast(x.item_id + ': ' + x.error, 'bad'));
+      const seg = fin();
+      S.resultado = {
+        ok: mal.length === 0 ? true : (okN ? null : false),
+        seg: seg,
+        titulo: mal.length === 0
+          ? okN + ' precios de lista actualizados'
+          : okN + ' actualizados y ' + mal.length + ' rechazados',
+        detalle: mal.length
+          ? 'Rechazados: ' + mal.slice(0,6).map(x => x.item_id + ' (' + x.error + ')').join(' · ') +
+            (mal.length > 6 ? ' y ' + (mal.length-6) + ' más' : '') + '. El detalle completo está en Registro.'
+          : 'Revisá la columna "Lista actual": tiene que coincidir con lo que pusiste.'
+      };
       await cargar();
     } catch (e) { fin(false); toast(e.message, 'bad'); }
   };
@@ -2084,7 +2132,10 @@ function abrirSumar(o) {
   sumarActual = o;
   const {it,p} = o;
   const solo = p.aceptaSolo, ligh = p.tipo === 'LIGHTNING';
-  const def = p.sug || p.max;
+  // Si Meli ya propuso un precio para esta publicación, ese es el que va: es el
+  // que respeta la regla del 5% contra lo que estás vendiendo hoy. El sugerido
+  // genérico puede estar por encima y hacer que la oferta rebote.
+  const def = p.precio || p.sug || p.max;
 
   $('#sTit').textContent = 'Sumar a ' + nombrePromo(p);
   $('#sOk').classList.remove('hide');
@@ -2109,6 +2160,7 @@ function abrirSumar(o) {
     ${ligh?`<div class="fld"><label>Stock a reservar</label>
       <input type="number" id="fStock" value="${p.stockMin||1}" min="${p.stockMin||1}" ${p.stockMax?`max="${p.stockMax}"`:''}>
       <span class="help">Meli pide entre ${p.stockMin??'—'} y ${p.stockMax??'—'} unidades.</span></div>`:''}
+    <div id="fCred"></div>
     ${p.tipo==='PRICE_DISCOUNT'?`<div class="aviso">Máximo 14 días. Descuento entre 5% y 80%.
       Si el ítem ya está en un DEAL, no se aplica hasta que el DEAL termine.</div>`:''}`}
     ${ligh?`<div class="aviso bad">Una vez activa, la relámpago <b>no se puede eliminar</b>. Solo pausar el ítem.</div>`:''}`;
@@ -2123,10 +2175,53 @@ function abrirSumar(o) {
     // Al cambiar el precio cambia si la oferta llega a verse: se recalcula vivo.
     const vis = $('#fVis');
     if (vis) vis.innerHTML = avisoVisibilidad(visibilidad(it, v, p.inicio, p.fin));
+    // Y la regla del 5%: el precio tiene que estar al menos 5% por debajo del
+    // más bajo de los últimos 7 días. Sin histórico completo, lo que estás
+    // vendiendo hoy es la mejor referencia que tenemos, y suele ser la que Meli
+    // usa. Avisar antes es mejor que comerse el rechazo.
+    const cr = $('#fCred');
+    if (cr) cr.innerHTML = avisoCredibilidad(it, v);
   };
   $$('#sBody [data-set]').forEach(b => b.onclick = () => { $('#fPrecio').value = Math.round(+b.dataset.set); calc(); });
   if ($('#fPrecio')) { $('#fPrecio').oninput = calc; calc(); }
+  const err = $('#sError'); if (err) err.remove();
   $('#dSumar').showModal();
+}
+
+/**
+ * La regla del 5%, aplicada al precio que estás por poner.
+ *
+ * Meli valida el descuento contra el precio más bajo de los últimos 7 días. No
+ * tenemos ese histórico completo, pero lo que estás vendiendo hoy es la mejor
+ * referencia y en la práctica es la que rebota. Avisar acá evita el rechazo.
+ */
+function avisoCredibilidad(it, precio) {
+  const ref = it.precioActivo;
+  if (!precio || !ref) return '';
+  const techo = Math.floor(ref * 0.95);       // 5% por debajo de lo que vendés hoy
+  if (precio <= techo) {
+    const pc = (1 - precio / ref) * 100;
+    return `<div class="aviso ok">Cumple la regla del 5%: es <b>${pct(pc)}</b> más barato
+      que los ${pes(ref)} a los que vendés hoy.</div>`;
+  }
+  return `<div class="aviso bad"><b>Meli va a rechazar este precio.</b>
+    Hoy vendés a <b>${pes(ref)}</b>, y la oferta tiene que ser al menos <b>5% más barata</b>:
+    <b>${pes(techo)}</b> o menos. A ${pes(precio)} son solo ${pct((1 - precio/ref)*100)}.</div>`;
+}
+
+/** Deja el error a la vista dentro del diálogo, en vez de un toast que se va. */
+function mostrarErrorSumar(msg) {
+  const b = $('#sBody'); if (!b) { toast(msg, 'bad'); return; }
+  var caja = $('#sError');
+  if (!caja) {
+    caja = document.createElement('div');
+    caja.id = 'sError'; caja.className = 'aviso bad';
+    caja.style.marginTop = '12px';
+    b.appendChild(caja);
+  }
+  caja.innerHTML = '<b>Mercado Libre rechazó el cambio.</b><br>' + esc(msg);
+  caja.scrollIntoView({ block: 'nearest' });
+  toast(msg, 'bad');
 }
 
 /* ═══ CREAR DESCUENTO INDIVIDUAL A MANO ═══ */
@@ -2203,7 +2298,7 @@ $('#sOk').onclick = async () => {
       await escribir('sumar', { item_id: it.id, promotion_type:'PRICE_DISCOUNT', deal_price: v,
         start_date: ini + 'T00:00:00', finish_date: f + 'T00:00:00' }, 'Descuento creado', $('#sOk'));
       $('#dSumar').close();
-    } catch (e) { toast(e.message, 'bad'); }
+    } catch (e) { mostrarErrorSumar(e.message); }
     return;
   }
 
@@ -2216,9 +2311,14 @@ $('#sOk').onclick = async () => {
     body.deal_price = v;
     if (p.tipo === 'LIGHTNING') body.stock = +($('#fStock')||{}).value || 1;
   }
-  try { await escribir('sumar', body, 'Sumado a ' + nombrePromo(p), $('#sOk'));
-    $('#dSumar').close(); }
-  catch (e) { toast(e.message, 'bad'); }
+  try {
+    await escribir('sumar', body, 'Sumado a ' + nombrePromo(p), $('#sOk'));
+    $('#dSumar').close();
+  } catch (e) {
+    // Antes esto solo sacaba un toast, que se va solo y es fácil no verlo.
+    // Ahora el error queda fijo adentro del diálogo, con el precio a la vista.
+    mostrarErrorSumar(e.message);
+  }
 };
 
 /* ═══════════════════════════════════════════════════════════
@@ -2280,19 +2380,74 @@ function parchar(itemId, filas) {
   return true;
 }
 
-/** Escribe en Meli y refresca solo lo que cambió. */
+/**
+ * Verifica que el cambio haya quedado, mirando el dato fresco.
+ *
+ * Que la llamada no tire error no alcanza: Meli puede contestar 200 y que la
+ * promoción siga como disponible. Como el backend devuelve las filas
+ * actualizadas de esa publicación, se puede comprobar de verdad en vez de
+ * suponer. Si no se puede confirmar, se dice — no se da por hecho.
+ */
+function verificar(accion, body, filas) {
+  const tipo = body.promotion_type;
+  if (!filas || !filas.length)
+    return { ok: null, titulo: 'No pude confirmarlo',
+             detalle: 'El pedido salió sin error, pero no me llegó el estado actualizado. Sincronizá y revisá antes de rehacerlo.' };
+
+  const suyas = filas.filter(f => String(f.promo_tipo) === tipo &&
+    (!body.promotion_id || String(f.promo_id) === String(body.promotion_id)));
+  const adentro = suyas.filter(f => f.status === 'started' || f.status === 'pending');
+
+  if (accion === 'salir') {
+    return adentro.length
+      ? { ok: false, titulo: 'No salió', detalle: 'La promoción sigue figurando como aceptada en Mercado Libre.' }
+      : { ok: true,  titulo: 'Saliste de la promoción', detalle: 'Ya no participa. Ojo: el reloj de credibilidad arranca ahora.' };
+  }
+
+  if (!adentro.length)
+    return { ok: false, titulo: 'No quedó guardado',
+             detalle: 'Mercado Libre aceptó el pedido pero la promoción sigue figurando como disponible. No se aplicó.' };
+
+  const f = adentro[0];
+  const cuando = f.inicio ? ' · ' + fecha(f.inicio) + (f.fin ? ' → ' + fecha(f.fin) : '') : '';
+  return { ok: true, titulo: 'Confirmado por Mercado Libre',
+           detalle: (f.promo_nombre || tipo) + ' quedó ' +
+                    (f.status === 'started' ? 'activa' : 'programada') +
+                    (f.precio_promo ? ' a ' + pes(+f.precio_promo) : '') + cuando + '.' };
+}
+
+/** Escribe en Meli, refresca solo lo que cambió, y comprueba que haya quedado. */
 async function escribir(accion, body, mensaje, boton) {
   const fin = ocupar(boton, accion === 'salir' ? 'Saliendo' : 'Sumando', 'escritura');
   try {
     const r = await api(accion, body);
     const seg = fin();
-    if (!parchar(body.item_id, r && r.filas)) cargar();
-    // El backend informa en qué se fue el tiempo: Meli, la planilla o el log.
-    const d = r && r.ms
-      ? ' · Meli ' + (r.ms.meli/1000).toFixed(1) + 's + planilla ' +
-        ((r.ms.refresco + r.ms.log)/1000).toFixed(1) + 's' : '';
-    toast(mensaje + ' · ' + seg + 's' + d, 'ok');
+    const filas = r && r.filas;
+    if (!parchar(body.item_id, filas)) cargar();
+
+    const v = verificar(accion, body, filas);
+    S.resultado = Object.assign({ item: body.item_id, seg: seg }, v);
+    render();
+    if (v.ok === false) throw new Error(v.detalle);
+    toast(v.titulo + ' · ' + seg + 's', v.ok ? 'ok' : 'warn');
   } catch (e) { fin(false); throw e; }
+}
+
+/**
+ * El resultado de la última escritura, arriba de la pantalla y hasta que lo
+ * cierres. Un toast se va solo a los tres segundos y uno termina sin saber si
+ * se guardó — que es justo lo que no puede pasar con cambios de precio.
+ */
+function bannerResultado() {
+  const r = S.resultado;
+  if (!r) return '';
+  const clase = r.ok === true ? 'ok' : r.ok === false ? 'bad' : '';
+  const icono = r.ok === true ? '✓' : r.ok === false ? '✕' : '?';
+  return `<div class="aviso ${clase} resultado">
+    <span class="ico">${icono}</span>
+    <div><b>${esc(r.titulo)}</b> ${esc(r.detalle)}
+      ${r.item ? `<div class="sub">${esc(r.item)}${r.seg?' · '+r.seg+'s':''}</div>` : ''}</div>
+    <button class="btn xs" id="cerrarRes">cerrar</button></div>`;
 }
 
 /**
@@ -2333,12 +2488,18 @@ function pintarFrescura(u) {
  */
 function versionBackChip() {
   const vb = S.data && S.data.versionBack;
-  if (!vb) return ' <span class="ver" title="El backend implementado es anterior a esta comprobación. Hacé Implementar → Versión nueva.">back: ?</span>';
-  const igual = vb === VERSION;
-  return ' <span class="ver' + (igual ? '' : ' desfasado') + '" title="' +
-    (igual ? 'Front y backend en la misma versión.'
-           : 'El backend implementado (' + vb + ') no coincide con el front (' + VERSION + '). Hacé Implementar → Versión nueva en Apps Script.') +
-    '">back ' + esc(vb) + (igual ? '' : ' ◄ desactualizado') + '</span>';
+  const c  = (S.data && S.data.contrato) || 0;
+  if (!vb) return ' <span class="ver desfasado" title="El backend implementado es viejo. Hacé Implementar → Versión nueva.">back: ?</span>';
+  // Comparar versión contra versión daba falsas alarmas: el front cambia mucho
+  // más seguido que el backend y no siempre necesita nada nuevo de él. Lo que
+  // importa es el CONTRATO — qué acciones sabe responder. Solo se avisa cuando
+  // al backend le falta algo que el front va a pedir.
+  const falta = c < CONTRATO_MINIMO;
+  return ' <span class="ver' + (falta ? ' desfasado' : '') + '" title="' +
+    (falta ? 'Al backend implementado le faltan acciones que esta versión de la app usa (tiene contrato ' +
+             c + ', necesita ' + CONTRATO_MINIMO + '). Hacé Implementar → Versión nueva en Apps Script.'
+           : 'Backend ' + vb + ' · contrato ' + c + ': tiene todo lo que la app necesita.') +
+    '">back ' + esc(vb) + (falta ? ' ◄ le faltan funciones' : '') + '</span>';
 }
 
 /* ═══ carga ═══ */
