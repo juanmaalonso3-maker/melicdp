@@ -230,6 +230,17 @@ tbody tr:last-child td{border-bottom:0}
 .listado .mini{width:38px;height:38px;object-fit:contain;border-radius:5px;background:var(--panel2);display:block}
 .listado .sub{font:400 11px "JetBrains Mono";color:var(--ink3);margin-top:2px}
 .listado b{font-size:13px}
+.barra-sel{display:flex;gap:14px;align-items:center;flex-wrap:wrap;padding:11px 16px;
+  border-bottom:1px solid var(--line);background:var(--panel2);font-size:12.5px}
+.barra-sel label{display:flex;gap:6px;align-items:center;cursor:pointer}
+.barra-sel input[type=checkbox]{accent-color:var(--acc);cursor:pointer}
+.barra-sel .sep-flex{margin-left:auto}
+.barra-sel select{background:var(--panel);color:var(--ink);border:1px solid var(--line2);
+  border-radius:6px;padding:5px 9px;font-size:12px;cursor:pointer}
+.precio-modo{font:600 10.5px "JetBrains Mono";letter-spacing:.06em;text-transform:uppercase;color:var(--ink3)}
+.listado tr.sel{background:var(--acc2)}
+.listado th.ordenable{cursor:pointer;user-select:none;white-space:nowrap}
+.listado th.ordenable:hover{color:var(--acc)}
 .listado .ver-mas{font-size:11.5px;color:var(--acc);white-space:nowrap;opacity:0;transition:opacity .12s}
 .listado tbody tr:hover .ver-mas{opacity:1}
 
@@ -308,6 +319,7 @@ dialog::backdrop{background:rgba(10,18,16,.55)}
       <button class="nav" data-v="listado">Listado de productos <span class="b" id="bL">0</span></button>
       <button class="nav" data-v="sku" aria-current="true">Ver un producto <span class="b" id="bS">0</span></button>
       <button class="nav" data-v="sinpromo">Sin oferta hoy <span class="b" id="bH">0</span></button>
+      <button class="nav" data-v="relampago">⚡ Ofertas relámpago <span class="b" id="bR">0</span></button>
       <button class="nav" data-v="precios">Actualizar precios</button>
       <div class="nav-sep">Referencia</div>
       <button class="nav" data-v="tarjetas">Campañas <span class="b" id="bT">0</span></button>
@@ -361,13 +373,13 @@ dialog::backdrop{background:rgba(10,18,16,.55)}
 const S = {
   url: localStorage.getItem('cdp_url') || '',
   key: localStorage.getItem('cdp_key') || '',
-  data:null, filas:[], items:[], skus:[], camps:[], reloj:{}, log:[], etiquetas:{},
+  data:null, filas:[], items:[], skus:[], camps:[], reloj:{}, log:[], etiquetas:{}, relampagos:[], selRel:new Set(),
   vista:'listado', q:'', filtroSalud:'todos', precioSku:null, descGlobal:30, skuSel: localStorage.getItem('cdp_sku') || '', campFiltro:null, sel:new Set()
 };
 /* Subilo cada vez que cambie el archivo. Sirve para saber, mirando la app,
    si el navegador está sirviendo la versión nueva o una cacheada: GitHub Pages
    guarda el index.html un rato y es fácil quedarse con el viejo sin notarlo. */
-const VERSION = '2026.08.30-19';
+const VERSION = '2026.08.30-20';
 const VENTANA = 7;
 const $  = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
@@ -708,6 +720,17 @@ function procesar(d) {
     .sort((a,b) => (ORDEN_SALUD[a.salud] - ORDEN_SALUD[b.salud]) ||
                    a.sku.localeCompare(b.sku, 'es', {numeric:true}));
 
+  // Todas las relámpago de la cuenta, aceptadas o no. Una fila por publicación.
+  S.relampagos = [];
+  S.items.forEach(it => it.promos.forEach(x => {
+    if (x.tipo !== 'LIGHTNING') return;
+    S.relampagos.push({ it, x, puedeSumar: sePuedeSumar(x) });
+  }));
+  S.relampagos.sort((a,b) =>
+    (b.puedeSumar - a.puedeSumar) ||
+    String(a.it.sku).localeCompare(String(b.it.sku), 'es', {numeric:true}) ||
+    (a.it.lista - b.it.lista));
+
   // huérfanas: hoy no muestran oferta. Las que tienen una programada para más
   // adelante entran igual —hoy no venden con descuento— pero se marcan aparte.
   S.huerfanas = S.items.filter(it => it.sinVigente)
@@ -726,9 +749,10 @@ function render() {
   $('#bL').textContent = S.skus.length;
   $('#bS').textContent = S.skus.length;
   $('#bH').textContent = S.huerfanas.length;
+  $('#bR').textContent = S.relampagos.filter(r => r.puedeSumar).length;
   $('#bT').textContent = S.camps.length;
   $('#bC').textContent = S.items.filter(i => i.dias != null && i.dias > 0 && i.dias < VENTANA).length;
-  ({listado:vListado, sku:vSku, sinpromo:vSinPromo, precios:vPrecios, tarjetas:vCamp,
+  ({listado:vListado, sku:vSku, sinpromo:vSinPromo, relampago:vRelampago, precios:vPrecios, tarjetas:vCamp,
     credibilidad:vCred, registro:vLog})[S.vista]();
 }
 const vacio = (t,p) => `<div class="panel"><div class="empty"><b>${t}</b><p>${p}</p></div></div>`;
@@ -754,13 +778,38 @@ function vListado() {
       <span class="n">${n}</span><span class="t">${titulo}</span><span class="s">${sub}</span></button>`;
   };
 
+  // Orden: por defecto el estado (lo urgente arriba). Se puede cambiar
+  // tocando cualquier encabezado; el SKU va en su propia columna para poder
+  // ordenar por código, que es como está armada tu planilla.
+  const ord = S.ordenListado || { col: 'salud', dir: 1 };
+  const valor = {
+    sku:    g => g.sku,
+    titulo: g => g.titulo.toLowerCase(),
+    salud:  g => ORDEN_SALUD[g.salud],
+    vig:    g => g.pubs.length ? g.nVig / g.pubs.length : 0,
+    rel:    g => g.nRelampago,
+    cand:   g => g.nCand,
+    lista:  g => Math.min(...[...g.pubs.map(p => p.lista).filter(Boolean), Infinity]),
+    stock:  g => g.stock
+  };
+  const orden = (a, b) => {
+    const f = valor[ord.col] || valor.salud;
+    const va = f(a), vb = f(b);
+    var c = typeof va === 'string' ? va.localeCompare(vb, 'es', {numeric:true}) : (va - vb);
+    if (!c) c = a.sku.localeCompare(b.sku, 'es', {numeric:true});
+    return c * ord.dir;
+  };
+  const flecha = c => ord.col === c ? (ord.dir > 0 ? ' ▲' : ' ▼') : '';
+  const th = (c, txt, cls) => `<th class="${cls||''} ordenable" data-ord="${c}">${txt}${flecha(c)}</th>`;
+
   const fila = g => {
     const s = SALUD[g.salud];
     const rango = g.pubs.map(p => p.lista).filter(Boolean);
     return `<tr data-sku="${esc(g.sku)}" class="fila-sku">
       <td>${g.foto?`<img class="mini" src="${esc(g.foto)}" alt="" loading="lazy">`:''}</td>
-      <td><b>${esc(g.titulo.slice(0,52))}</b>
-        <div class="sub">SKU ${esc(g.sku)} · ${g.pubs.length} publicaciones${g.nCat?` · ${g.nCat} de catálogo`:''}</div></td>
+      <td class="n"><b>${esc(g.sku)}</b></td>
+      <td><b>${esc(g.titulo.slice(0,48))}</b>
+        <div class="sub">${g.pubs.length} publicaciones${g.nCat?` · ${g.nCat} de catálogo`:''}</div></td>
       <td><span class="chip ${s.clase}" title="${esc(s.ayuda)}">${s.txt}</span></td>
       <td class="c n">${g.nVig} de ${g.pubs.length}</td>
       <td class="c">${g.nRelampago?`<span class="chip acc" title="Relámpagos disponibles sin aceptar">⚡ ${g.nRelampago}</span>`:'<span style="color:var(--ink3)">—</span>'}</td>
@@ -787,11 +836,11 @@ function vListado() {
 
     ${visibles.length ? `<div class="panel"><div class="scroll"><table class="listado">
       <thead><tr>
-        <th></th><th>Producto</th><th>Estado</th>
-        <th class="c">Con oferta</th><th class="c">Relámpago</th><th class="c">Disponibles</th>
-        <th class="r">Desde</th><th class="r">Stock</th><th></th>
+        <th></th>${th('sku','SKU','n')}${th('titulo','Producto')}${th('salud','Estado')}
+        ${th('vig','Con oferta','c')}${th('rel','Relámpago','c')}${th('cand','Disponibles','c')}
+        ${th('lista','Desde','r')}${th('stock','Stock','r')}<th></th>
       </tr></thead>
-      <tbody>${visibles.map(fila).join('')}</tbody>
+      <tbody>${visibles.slice().sort(orden).map(fila).join('')}</tbody>
     </table></div></div>`
     : vacio('Nada por acá', 'Ningún producto coincide con el filtro.')}`;
 
@@ -802,6 +851,11 @@ function vListado() {
   $$('.fila-sku').forEach(t => t.onclick = () => {
     S.skuSel = t.dataset.sku; S.q = '';
     localStorage.setItem('cdp_sku', S.skuSel); ir('sku');
+  });
+  $$('[data-ord]').forEach(h => h.onclick = () => {
+    const c = h.dataset.ord;
+    S.ordenListado = { col: c, dir: (ord.col === c && ord.dir > 0) ? -1 : 1 };
+    render();
   });
   const i = $('#qlista');
   if (i) { let t; i.oninput = e => { clearTimeout(t);
@@ -1628,6 +1682,157 @@ function vCamp() {
     </div>`).join('') || vacio('Sin campañas','No hay campañas abiertas.')}</div>`;
 
   $$('[data-camp]').forEach(b => b.onclick = () => { S.campFiltro = b.dataset.camp; ir('oportunidades'); });
+}
+
+/* ═══════════════════════════════════════════════════════════
+   OFERTAS RELÁMPAGO
+   Todas juntas, por SKU y por escalón de cuotas. Es la campaña que más
+   conviene mirar aparte: no ensucia la ventana de credibilidad, dura horas, y
+   Meli la propone publicación por publicación con su propia ventana de precio.
+   Ojo con una cosa: una vez activa NO se puede eliminar, solo pausar el ítem.
+   ═══════════════════════════════════════════════════════════ */
+function vRelampago() {
+  $('#tit').textContent = 'Ofertas relámpago';
+  const todas = S.relampagos;
+  const libres = todas.filter(r => r.puedeSumar);
+  const dentro = todas.filter(r => !r.puedeSumar);
+
+  if (!todas.length) {
+    $('#wrap').innerHTML = vacio('No hay relámpagos',
+      'Mercado Libre no está proponiendo ofertas relámpago en ninguna de tus publicaciones. Aparecen y desaparecen solas: volvé a sincronizar más tarde.');
+    return;
+  }
+
+  const sel = S.selRel;
+  const clave = r => r.it.id;
+  const nSel = libres.filter(r => sel.has(clave(r))).length;
+
+  const fila = r => {
+    const { it, x } = r;
+    const est = estadoDe(x);
+    const marcado = sel.has(clave(r));
+    // El techo es el precio más alto que Meli acepta: el de mejor margen.
+    const precio = x.precio || x.max || x.sug;
+    return `<tr class="${marcado?'sel':''}">
+      <td>${r.puedeSumar
+        ? `<input type="checkbox" class="ckRel" data-id="${esc(it.id)}"${marcado?' checked':''}>`
+        : ''}</td>
+      <td class="n"><b>${esc(it.sku || '—')}</b></td>
+      <td><b style="font-size:12.5px">${esc(cuotasPub(it))}</b>
+        ${it.catalogo?'<span class="chip cat" style="margin-left:5px">★</span>':''}
+        <div class="sub">${esc(it.titulo.slice(0,38))}</div></td>
+      <td class="r n">${pes(it.lista)}</td>
+      <td class="r n">${it.precioActivo?pes(it.precioActivo):'<span style="color:var(--ink3)">sin oferta</span>'}</td>
+      <td class="r n"><b>${precio?pes(precio):'—'}</b>
+        ${precio&&it.lista?`<div class="sub">−${pct((1-precio/it.lista)*100)}</div>`:''}</td>
+      <td class="r n">${(() => { const v = neto(it, precio); return v==null?'—':pes(v); })()}</td>
+      <td class="c">${x.stockMin!=null?`${x.stockMin}–${x.stockMax}`:'<span style="color:var(--ink3)">—</span>'}</td>
+      <td style="font-size:11px">${vigenciaTexto(x)}</td>
+      <td><span class="chip ${est[0]}" title="${esc(est[2])}">${est[1]}</span></td>
+      <td class="r">${r.puedeSumar
+        ? `<button class="btn xs" data-rel="${esc(it.id)}">Sumar</button>`
+        : '<span class="sub">ya adentro</span>'}</td>
+    </tr>`;
+  };
+
+  const cab = `<thead><tr>
+    <th></th><th>SKU</th><th>Escalón</th><th class="r">Lista</th><th class="r">Vendiendo hoy</th>
+    <th class="r">Precio relámpago</th><th class="r">Recibís</th><th class="c">Stock</th>
+    <th>Ventana</th><th>Estado</th><th></th></tr></thead>`;
+
+  $('#wrap').innerHTML = `
+    <div class="kpis">
+      <div class="kpi good"><span class="k">Podés sumarte</span><span class="v">${libres.length}</span><span class="d">publicaciones invitadas</span></div>
+      <div class="kpi"><span class="k">Ya adentro</span><span class="v">${dentro.length}</span><span class="d">aceptadas o corriendo</span></div>
+      <div class="kpi"><span class="k">Productos</span><span class="v">${new Set(todas.map(r=>r.it.sku)).size}</span><span class="d">SKU distintos</span></div>
+    </div>
+
+    <div class="aviso ok"><b>Por qué conviene mirarlas aparte.</b> Las relámpago
+      <b>no cuentan para la ventana de credibilidad</b> — junto con las del Día son las únicas
+      que no ensucian el piso de los ${VENTANA} días. Podés vender con descuento sin frenar el reloj.</div>
+
+    ${libres.length ? `<div class="panel">
+      <h3>Disponibles para sumar <span class="hint">${libres.length} publicaciones</span></h3>
+      <div class="barra-sel">
+        <label><input type="checkbox" id="ckTodas"> Seleccionar todas</label>
+        <span id="selCuenta">${nSel} seleccionadas</span>
+        <span class="sep-flex"></span>
+        <label class="precio-modo">Precio a usar
+          <select id="modoPrecio">
+            <option value="max"${S.modoRel!=='sug'?' selected':''}>Techo — el de mejor margen</option>
+            <option value="sug"${S.modoRel==='sug'?' selected':''}>Sugerido por Meli</option>
+          </select></label>
+        <button class="btn p" id="sumarRel"${nSel?'':' disabled'}>Sumar las seleccionadas</button>
+      </div>
+      <div class="scroll"><table class="listado">${cab}<tbody>${libres.map(fila).join('')}</tbody></table></div>
+      <div class="aviso bad" style="margin:0 16px 14px"><b>Una relámpago activa no se puede eliminar.</b>
+        Solo se puede pausar la publicación entera. Revisá el precio y el stock antes de confirmar.</div>
+    </div>` : ''}
+
+    ${dentro.length ? `<div class="panel"><h3>Ya adentro
+      <span class="hint">${dentro.length} publicaciones</span></h3>
+      <div class="scroll"><table class="listado">${cab}<tbody>${dentro.map(fila).join('')}</tbody></table></div>
+    </div>` : ''}`;
+
+  const refrescarBarra = () => {
+    const n = libres.filter(r => sel.has(clave(r))).length;
+    const c = $('#selCuenta'); if (c) c.textContent = n + ' seleccionadas';
+    const b = $('#sumarRel'); if (b) b.disabled = !n;
+    $$('.ckRel').forEach(ck => {
+      const tr = ck.closest('tr'); if (tr) tr.classList.toggle('sel', ck.checked);
+    });
+  };
+  $$('.ckRel').forEach(ck => ck.onclick = e => {
+    e.stopPropagation();
+    ck.checked ? sel.add(ck.dataset.id) : sel.delete(ck.dataset.id);
+    refrescarBarra();
+  });
+  const ct = $('#ckTodas');
+  if (ct) ct.onclick = () => {
+    libres.forEach(r => ct.checked ? sel.add(clave(r)) : sel.delete(clave(r)));
+    $$('.ckRel').forEach(ck => { ck.checked = ct.checked; });
+    refrescarBarra();
+  };
+  const mp = $('#modoPrecio');
+  if (mp) mp.onchange = () => { S.modoRel = mp.value; };
+
+  $$('[data-rel]').forEach(b => b.onclick = () => {
+    const r = libres.find(x => x.it.id === b.dataset.rel);
+    if (r) abrirSumar({ it: r.it, p: r.x });
+  });
+
+  const sr = $('#sumarRel');
+  if (sr) sr.onclick = async () => {
+    const modo = (($('#modoPrecio')||{}).value) || 'max';
+    const elegidas = libres.filter(r => sel.has(clave(r)));
+    const acciones = [], detalle = [];
+    elegidas.forEach(r => {
+      const { it, x } = r;
+      const precio = modo === 'sug' ? (x.sug || x.max) : (x.max || x.sug);
+      const stock = x.stockMin || 1;
+      if (!precio) return;
+      acciones.push({ accion:'sumar', item_id: it.id, promotion_type:'LIGHTNING',
+                      promotion_id: x.promoId || undefined,
+                      deal_price: Math.round(precio), stock: stock });
+      detalle.push('   ' + it.sku + ' · ' + cuotasPub(it) + '  →  ' + pes(precio) + '  (' + stock + ' u.)');
+    });
+    if (!acciones.length) { toast('Ninguna tiene precio para usar','warn'); return; }
+    if (!confirm('Sumar ' + acciones.length + ' publicaciones a ofertas relámpago:\n\n' +
+      detalle.join('\n') + '\n\nUNA RELÁMPAGO ACTIVA NO SE PUEDE ELIMINAR: solo se puede pausar ' +
+      'la publicación entera.\n\n¿Confirmás?')) return;
+
+    const fin = ocupar(sr, 'Sumando', 'lote');
+    try {
+      const res = await api('lote', { acciones });
+      const ok = (res||[]).filter(x => x.ok).length;
+      const mal = (res||[]).filter(x => !x.ok);
+      fin();
+      toast(ok + ' sumadas' + (mal.length?` · ${mal.length} fallaron`:''), mal.length?'warn':'ok');
+      mal.slice(0,3).forEach(x => toast(x.item_id + ': ' + x.error, 'bad'));
+      sel.clear();
+      await cargar();
+    } catch (e) { fin(false); toast(e.message,'bad'); }
+  };
 }
 
 /* ═══════════════════════════════════════════════════════════
