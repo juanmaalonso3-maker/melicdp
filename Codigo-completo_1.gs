@@ -57,7 +57,7 @@ const P = PropertiesService.getScriptProperties();
  * sync tardara 15 segundos desde el editor y 33 desde la app, sin ninguna
  * pista de por qué. Ahora la app muestra las dos versiones y el desfasaje se ve.
  */
-const VERSION_BACK = '2026.08.29-16';
+const VERSION_BACK = '2026.08.29-18';
 
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -158,6 +158,20 @@ function _arr(x) {
  * con él. Las sueltas son hora de Argentina: se les pega el -03:00 para que el
  * navegador no las interprete según dónde esté abierto.
  */
+/**
+ * La ventana de una publicación dentro de una campaña, como [inicio, fin].
+ *
+ * Ojo: Meli usa DOS nombres distintos para el mismo campo según el tipo de
+ * campaña. Las relámpago mandan "finish_date"; los acuerdos PRE_NEGOTIATED
+ * mandan "end_date". Leer solo uno dejaba el cierre vacío y la app terminaba
+ * completándolo con la fecha de la campaña — mostraba "01-sept → 05-oct"
+ * cuando la oferta era de un solo día.
+ */
+function _ventanaDe(x) {
+  if (!x) return ['', ''];
+  return [_fechaAR(x.start_date), _fechaAR(x.finish_date || x.end_date)];
+}
+
 function _fechaAR(v) {
   if (!v) return '';
   const s = String(v);
@@ -651,8 +665,9 @@ function sincronizarTodo() {
         lote = _arr(r);
         lote.forEach(function (x) {
           if (!x || !x.id) return;
-          if (!x.start_date && !x.finish_date) return;
-          ventanas[c.id + '|' + x.id] = [_fechaAR(x.start_date), _fechaAR(x.finish_date)];
+          const w = _ventanaDe(x);
+          if (!w[0] && !w[1]) return;
+          ventanas[c.id + '|' + x.id] = w;
         });
         vistos += lote.length;
         if (r && r.paging && r.paging.total != null) total = r.paging.total;
@@ -942,8 +957,9 @@ function refrescarSku(sku) {
     try {
       _arr(mlGet('/seller-promotions/promotions/' + pid + '/items?promotion_type=' +
                  encodeURIComponent(pendientes[pid]) + '&app_version=v2')).forEach(function (x) {
-        if (x && (x.start_date || x.finish_date))
-          ventanas[pid + '|' + x.id] = [_fechaAR(x.start_date), _fechaAR(x.finish_date)];
+        if (!x || !x.id) return;
+        const w = _ventanaDe(x);
+        if (w[0] || w[1]) ventanas[pid + '|' + x.id] = w;
       });
     } catch (e) {}
   });

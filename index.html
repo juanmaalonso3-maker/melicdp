@@ -313,7 +313,7 @@ const S = {
 /* Subilo cada vez que cambie el archivo. Sirve para saber, mirando la app,
    si el navegador está sirviendo la versión nueva o una cacheada: GitHub Pages
    guarda el index.html un rato y es fácil quedarse con el viejo sin notarlo. */
-const VERSION = '2026.08.29-16';
+const VERSION = '2026.08.29-18';
 const VENTANA = 7;
 const $  = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
@@ -539,8 +539,14 @@ function procesar(d) {
       precio: pp && pp > 0 ? pp : null, max, min, sug,
       meliPct: nn(r['meli_%']), sellerPct: nn(r['seller_%']),
       boost:r.boost==='SI', precioBoost: nn(r.precio_boost),
+      // El inicio y el fin pueden venir de fuentes distintas: la publicación
+      // puede traer su día de arranque propio y no el de cierre. Mezclarlos sin
+      // avisar produce un rango que no existe —"01-sept → 05-oct" cuando la
+      // oferta es de un día—, así que se marca cuál de los dos vino prestado.
       inicio: r.inicio || (fechaCamp[String(r.promo_id||'')]||{}).inicio || '',
       fin:    r.fin    || (fechaCamp[String(r.promo_id||'')]||{}).fin    || '',
+      iniDeCamp: !r.inicio && !!(fechaCamp[String(r.promo_id||'')]||{}).inicio,
+      finDeCamp: !r.fin    && !!(fechaCamp[String(r.promo_id||'')]||{}).fin,
       fechaDeCamp: !r.inicio && !!(fechaCamp[String(r.promo_id||'')]||{}).inicio,
       offerId: String(r.offer_id||''),
       vence: vence[String(r.promo_id||'')] || '',
@@ -1052,8 +1058,13 @@ function vigenciaTexto(x) {
     return `<b>${fecha(x.inicio)}</b><div style="color:var(--acc)">${
       diaEntero ? 'solo ese día' : h1 + ' a ' + h2 + ' h'}</div>`;
   }
-  return fecha(x.inicio) + ' → ' + fecha(x.fin) + (x.fechaDeCamp
-    ? '<div style="font-size:10px;color:var(--ink3)" title="La fila del ítem no trae fecha; esta sale de la campaña">fecha de la campaña</div>' : '');
+  // Si solo el fin vino de la campaña, decirlo: la oferta puede terminar mucho
+  // antes y ese "→ 05-oct" sería el de la campaña, no el tuyo.
+  const nota = x.iniDeCamp && x.finDeCamp ? 'fecha de la campaña'
+             : x.finDeCamp ? 'el cierre es el de la campaña'
+             : x.iniDeCamp ? 'el inicio es el de la campaña' : '';
+  return fecha(x.inicio) + ' → ' + fecha(x.fin) + (nota
+    ? `<div style="font-size:10px;color:var(--ink3)" title="La publicación no informa esa punta de la ventana; se completa con la de la campaña.">${nota}</div>` : '');
 }
 
 /** Un bloque por publicación con TODAS sus promos y todos los campos. */
