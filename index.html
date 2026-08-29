@@ -313,7 +313,7 @@ const S = {
 /* Subilo cada vez que cambie el archivo. Sirve para saber, mirando la app,
    si el navegador está sirviendo la versión nueva o una cacheada: GitHub Pages
    guarda el index.html un rato y es fácil quedarse con el viejo sin notarlo. */
-const VERSION = '2026.08.29-14';
+const VERSION = '2026.08.29-16';
 const VENTANA = 7;
 const $  = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
@@ -969,6 +969,73 @@ const sePuedeSumar = x => x.status === 'candidate' || x.esPropuesta;
 const diasPara = s => { if (!s) return null; const d = new Date(s);
   return isNaN(d) ? null : Math.ceil((d - new Date())/864e5); };
 
+/* ═══════════════════════════════════════════════════════════
+   ¿ESTA OFERTA SE VA A VER?
+   Sumarse a una campaña más CARA que la que ya corre en esas fechas no hace
+   nada: manda siempre la más barata, y la nueva queda tapada. Podés quedar
+   comprometido con una promoción que el comprador no ve un solo día.
+   Esto simula día por día la ventana de la candidata contra lo que ya tenés
+   aceptado, y dice en cuántos días llegaría a mandar.
+   ═══════════════════════════════════════════════════════════ */
+const DIA = 864e5;
+
+function visibilidad(pub, precio, inicio, fin) {
+  if (!precio || !pub) return null;
+  // Sin fechas no se puede simular: una relámpago sin ventana, por ejemplo.
+  const desde = Math.max(inicio ? _iniDia(inicio) : _iniDia(new Date()), _iniDia(new Date()));
+  const hasta = fin ? _finDia(fin) : null;
+  if (!hasta || hasta < desde) return null;
+
+  // Lo ya comprometido, con precio y fechas, que compite en esos días.
+  const rivales = pub.promos.filter(x =>
+    !x.esCupon && !x.esPropuesta && x.precio &&
+    (x.status === 'started' || x.status === 'pending') &&
+    x.inicio && x.fin);
+
+  const dias = [];
+  for (var t = desde; t <= hasta && dias.length < 400; t += DIA) {
+    const compiten = rivales.filter(x => tIni(x) <= t + DIA - 1 && tFin(x) >= t);
+    const masBarata = compiten.length ? Math.min(...compiten.map(x => x.precio)) : Infinity;
+    dias.push({ t: t, gana: precio < masBarata,
+                rival: compiten.filter(x => x.precio === masBarata)[0] || null });
+  }
+  if (!dias.length) return null;
+
+  const gana = dias.filter(d => d.gana);
+  // El rival que más días la tapa, para poder nombrarlo.
+  const cuenta = new Map();
+  dias.filter(d => !d.gana && d.rival).forEach(d => {
+    cuenta.set(d.rival, (cuenta.get(d.rival) || 0) + 1);
+  });
+  const principal = [...cuenta.entries()].sort((a,b) => b[1] - a[1])[0];
+
+  return {
+    total: dias.length,
+    visibles: gana.length,
+    desde: gana.length ? new Date(gana[0].t).toISOString() : null,
+    hasta: gana.length ? new Date(gana[gana.length-1].t).toISOString() : null,
+    tapadaPor: principal ? principal[0] : null
+  };
+}
+
+/** El aviso en castellano, listo para pintar. */
+function avisoVisibilidad(v) {
+  if (!v) return '';
+  if (v.visibles === 0) {
+    const r = v.tapadaPor;
+    return `<div class="aviso bad"><b>Esta oferta no se va a ver ni un día.</b>
+      ${r ? `<b>${esc(nombrePromo(r))}</b> corre a <b>${pes(r.precio)}</b> en todo ese período y es más barata,
+             así que manda esa. ` : ''}Te comprometés con una promoción que el comprador nunca ve.</div>`;
+  }
+  if (v.visibles < v.total) {
+    const r = v.tapadaPor;
+    return `<div class="aviso"><b>Se va a ver ${v.visibles} de ${v.total} ${v.total===1?'día':'días'}</b>${
+      v.visibles === 1 ? ', el ' + fecha(v.desde) : ', del ' + fecha(v.desde) + ' al ' + fecha(v.hasta)}.
+      ${r ? `Los otros ${v.total - v.visibles} queda tapada por <b>${esc(nombrePromo(r))}</b> a ${pes(r.precio)}.` : ''}</div>`;
+  }
+  return `<div class="aviso ok">Se va a ver <b>${v.total === 1 ? 'el único día que dura' : 'los ' + v.total + ' días'}</b>: es la más barata de las que corren en esas fechas.</div>`;
+}
+
 /** La ventana de una promo, en el formato que corresponda a su duración. */
 function vigenciaTexto(x) {
   if (!x.inicio && !x.fin) {
@@ -976,9 +1043,15 @@ function vigenciaTexto(x) {
       ? `<span style="color:var(--ink3)" title="Las relámpago duran unas horas y Meli fija la ventana el día que salen; hasta entonces la API no la informa.">la ventana la fija Meli</span>`
       : `<span style="color:var(--ink3)" title="Ni el ítem ni la campaña traen fecha en la API">sin fecha en la API</span>`;
   }
-  // Relámpago y ofertas del día: importa la hora, no el día.
-  if (esIntradia(x))
-    return `<b>${fecha(x.inicio)}</b><div style="color:var(--acc)">${horaAR(x.inicio)} a ${horaAR(x.fin)} h</div>`;
+  // Relámpago y ofertas del día: importa la hora, no el día. Pero si la ventana
+  // cubre el día entero —caso de un acuerdo ofrecido solo para el 1/sep— poner
+  // "00:00 a 23:59" es ruido: alcanza con la fecha.
+  if (esIntradia(x)) {
+    const h1 = horaAR(x.inicio), h2 = horaAR(x.fin);
+    const diaEntero = h1 === '00:00' && h2 >= '23:00';
+    return `<b>${fecha(x.inicio)}</b><div style="color:var(--acc)">${
+      diaEntero ? 'solo ese día' : h1 + ' a ' + h2 + ' h'}</div>`;
+  }
   return fecha(x.inicio) + ' → ' + fecha(x.fin) + (x.fechaDeCamp
     ? '<div style="font-size:10px;color:var(--ink3)" title="La fila del ítem no trae fecha; esta sale de la campaña">fecha de la campaña</div>' : '');
 }
@@ -1070,7 +1143,15 @@ function bloquePub(p, g, esCabeza) {
         ${d!=null?`<div style="color:${d<3?'var(--bad)':'var(--ink3)'}">${d<0?'vencida':'quedan '+d+'d'}</div>`:''}</td>
       <td>${x.boost?'<span class="chip warn">boost</span>':''}
         ${x.stockMin!=null&&x.stockMax!=null?`<span class="chip mut">stock ${x.stockMin}–${x.stockMax}</span>`:''}</td>
-      <td class="r">${accion}</td>
+      <td class="r">${accion}${(() => {
+        // Aviso corto en la fila: si sumarse no va a mover la vidriera, decirlo acá.
+        if (!sePuedeSumar(x)) return '';
+        const v = visibilidad(p, x.precio, x.inicio, x.fin);
+        if (!v || v.visibles === v.total) return '';
+        return v.visibles === 0
+          ? `<div class="chip bad" style="margin-top:5px" title="Ya tenés una promoción más barata corriendo en esas mismas fechas: esta quedaría tapada todos los días.">no se vería</div>`
+          : `<div class="chip warn" style="margin-top:5px" title="Los otros días queda tapada por una más barata.">se vería ${v.visibles}/${v.total} d</div>`;
+      })()}</td>
     </tr>`;
   }).join('');
 
@@ -1537,7 +1618,8 @@ function abrirSumar(o) {
       ${it.precioActivo?`<span>Hoy <b class="n">${pes(it.precioActivo)}</b></span>`:''}
       <span class="chip mut">${esc(p.tipo)}</span></div>
     ${solo ? `<div class="aviso">Esta campaña la define Mercado Libre: vos solo aceptás.
-        Precio <b>${pes(p.precio || p.sug)}</b>${p.meliPct!=null?` — ML pone ${p.meliPct}% y vos ${p.sellerPct}%`:''}.</div>`
+        Precio <b>${pes(p.precio || p.sug)}</b>${p.meliPct!=null?` — ML pone ${p.meliPct}% y vos ${p.sellerPct}%`:''}.</div>
+        ${avisoVisibilidad(visibilidad(it, p.precio, p.inicio, p.fin))}`
     : `<div class="fld"><label>Precio final al comprador</label>
       <input type="number" id="fPrecio" value="${def?Math.round(def):''}" step="1">
       <div class="rango">
@@ -1545,6 +1627,7 @@ function abrirSumar(o) {
         ${p.sug?`<button type="button" data-set="${p.sug}">Sugerido ${pes(p.sug)}</button>`:''}
         ${p.min?`<button type="button" data-set="${p.min}">Piso ${pes(p.min)}</button>`:''}
       </div><span class="help" id="fCalc"></span></div>
+    <div id="fVis"></div>
     ${ligh?`<div class="fld"><label>Stock a reservar</label>
       <input type="number" id="fStock" value="${p.stockMin||1}" min="${p.stockMin||1}" ${p.stockMax?`max="${p.stockMax}"`:''}>
       <span class="help">Meli pide entre ${p.stockMin??'—'} y ${p.stockMax??'—'} unidades.</span></div>`:''}
@@ -1559,6 +1642,9 @@ function abrirSumar(o) {
     const fuera = (p.max && v > p.max) || (p.min && v < p.min);
     el.innerHTML = `Descuento <b>${pct((1 - v/it.lista)*100)}</b>` +
       (fuera?` — <span style="color:var(--bad)">fuera del rango (${pes(p.min)} a ${pes(p.max)})</span>`:'');
+    // Al cambiar el precio cambia si la oferta llega a verse: se recalcula vivo.
+    const vis = $('#fVis');
+    if (vis) vis.innerHTML = avisoVisibilidad(visibilidad(it, v, p.inicio, p.fin));
   };
   $$('#sBody [data-set]').forEach(b => b.onclick = () => { $('#fPrecio').value = Math.round(+b.dataset.set); calc(); });
   if ($('#fPrecio')) { $('#fPrecio').oninput = calc; calc(); }

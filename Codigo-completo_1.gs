@@ -57,7 +57,7 @@ const P = PropertiesService.getScriptProperties();
  * sync tardara 15 segundos desde el editor y 33 desde la app, sin ninguna
  * pista de por qué. Ahora la app muestra las dos versiones y el desfasaje se ve.
  */
-const VERSION_BACK = '2026.08.29-14';
+const VERSION_BACK = '2026.08.29-16';
 
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -379,10 +379,18 @@ function _pag(t, c) {
 
 const CACHE_DIAS = 7;
 
-/** Tipos cuya ventana se define por publicación y no por campaña: hay que
- *  pedirla al listado de ítems de la campaña. La relámpago es el caso típico
- *  —sale un día, unas horas— y la oferta del día funciona igual. */
-const VENTANA_POR_ITEM = ['LIGHTNING', 'DOD'];
+/**
+ * Tipos cuya ventana se define por publicación y no por campaña.
+ *
+ * En estos, la fila del ítem viene sin fechas y la de la campaña miente: la
+ * campaña "Ofertas Expansion Sept" corre del 31-ago al 05-oct, pero a ESTA
+ * publicación se la ofrecen solo el 1/sep. Hay que pedir el listado de ítems de
+ * la campaña, que trae la ventana real de cada una.
+ *
+ * LIGHTNING y DOD por definición (duran horas). PRE_NEGOTIATED se sumó el
+ * 29-ago: Meli propone acuerdos con fecha propia por publicación.
+ */
+const VENTANA_POR_ITEM = ['LIGHTNING', 'DOD', 'PRE_NEGOTIATED'];
 
 function _cacheLeer() {
   const sh = _hoja('Cache', ['clave', 'valor', 'calculado']);
@@ -617,17 +625,28 @@ function sincronizarTodo() {
   // ("limit must be lower than 50"), pero SIN el parámetro devuelve la tanda
   // completa. Así que la primera vuelta va pelada y solo se pagina si hace
   // falta, con searchAfter si lo ofrece y con offset si no.
-  camps.filter(function (c) { return VENTANA_POR_ITEM.indexOf(String(c.type)) >= 0; })
-    .forEach(function (c) {
+  //
+  // Las primeras páginas de todas las campañas van en un solo lote paralelo:
+  // con tres tipos en la lista, hacerlas en fila costaba varios segundos.
+  const campsVentana = camps.filter(function (c) {
+    return VENTANA_POR_ITEM.indexOf(String(c.type)) >= 0;
+  });
+  const _ruta1 = function (c) {
+    return '/seller-promotions/promotions/' + c.id + '/items?promotion_type=' +
+           encodeURIComponent(c.type) + '&app_version=v2';
+  };
+  const primeras = mlGetMuchos(campsVentana.map(_ruta1));
+
+  campsVentana.forEach(function (c) {
       var token = null, vistos = 0, total = null, vueltas = 0, lote = [];
       do {
-        var ruta = '/seller-promotions/promotions/' + c.id + '/items?promotion_type=' +
-                   encodeURIComponent(c.type) + '&app_version=v2';
+        var ruta = _ruta1(c);
         if (token)      ruta += '&searchAfter=' + encodeURIComponent(token);
         else if (vistos) ruta += '&limit=49&offset=' + vistos;
 
         var r;
-        try { r = mlGet(ruta); } catch (e) { Logger.log('ventanas ' + c.id + ': ' + e); break; }
+        if (!vueltas && primeras[ruta] !== undefined) r = primeras[ruta];   // ya vino en el lote
+        else { try { r = mlGet(ruta); } catch (e) { Logger.log('ventanas ' + c.id + ': ' + e); break; } }
 
         lote = _arr(r);
         lote.forEach(function (x) {
