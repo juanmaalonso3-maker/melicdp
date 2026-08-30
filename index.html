@@ -211,6 +211,7 @@ tbody tr:last-child td{border-bottom:0}
 .tab-salud::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--line2)}
 .tab-salud.sin::before{background:var(--bad)}
 .tab-salud.parcial::before{background:var(--warn)}
+.tab-salud.vence::before{background:var(--warn)}
 .tab-salud.relampago::before{background:var(--acc)}
 .tab-salud.ok::before{background:var(--ok)}
 .tab-salud .n{font-family:"JetBrains Mono";font-weight:600;font-size:26px;line-height:1.1;
@@ -220,6 +221,7 @@ tbody tr:last-child td{border-bottom:0}
 .tab-salud.on{border-color:var(--acc);box-shadow:0 0 0 2px var(--acc2)}
 .tab-salud.sin .n{color:var(--bad)}
 .tab-salud.parcial .n{color:var(--warn)}
+.tab-salud.vence .n{color:var(--warn)}
 .tab-salud.relampago .n{color:var(--acc)}
 .tab-salud.ok .n{color:var(--ok)}
 
@@ -467,7 +469,7 @@ const S = {
 /* Subilo cada vez que cambie el archivo. Sirve para saber, mirando la app,
    si el navegador está sirviendo la versión nueva o una cacheada: GitHub Pages
    guarda el index.html un rato y es fácil quedarse con el viejo sin notarlo. */
-const VERSION = '2026.08.30-36';
+const VERSION = '2026.08.30-40';
 /* Qué necesita el front del backend. Subir SOLO cuando se agrega o cambia una
    acción del /exec, no en cada retoque visual. */
 const CONTRATO_MINIMO = 4;
@@ -495,6 +497,10 @@ const CONTRATO_MINIMO = 4;
  */
 const CUPONES_SOLO_ITEMS = localStorage.getItem('cdp_cupones_api') !== '1';
 const VENTANA = 7;
+/* Con cuántos días de anticipación avisar que una oferta se cae sin reemplazo.
+   Diez: las campañas de Meli se arman con semanas de anticipación, así que
+   enterarse tres días antes ya es tarde para conseguir lugar en la que viene. */
+const DIAS_AVISO = 10;
 const $  = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -599,6 +605,20 @@ const ACUERDA_ACEPTA = ['PRE_NEGOTIATED','UNHEALTHY_STOCK'];
  * esté igual, pero no lo probé, así que no se supone: si algún día Meli
  * contesta ese 403 para otro tipo, se agrega solo (ver aprenderSalidaBloqueada).
  */
+/**
+ * El link al seller center, filtrado por el producto.
+ *
+ * La Central de Promociones vive en vendedores.mercadolibre.com.ar y su
+ * listado acepta un buscador por SKU. Llevar a la home de promociones obligaba
+ * a buscar el producto a mano; con el SKU en la URL cae parado en la fila que
+ * hace falta. Si la publicación no tiene SKU cargado, se busca por el MLA, que
+ * el mismo buscador acepta.
+ */
+const SELLER_PROMOS = 'https://vendedores.mercadolibre.com.ar/publicaciones/listado/promos';
+const linkPromos = busq => busq
+  ? SELLER_PROMOS + '?page=1&search=' + encodeURIComponent(String(busq).trim())
+  : SELLER_PROMOS;
+
 const SALIDA_BLOQUEADA = {
   PRICE_MATCHING: 'Meli no habilita salir de esta campaña por API — la arma ella y ' +
                   'contesta "no tenés permisos". Se sale desde el seller center.'
@@ -633,14 +653,19 @@ function aprenderSalidaBloqueada(tipo, mensaje) {
 const SALUD = {
   sin:       { txt:'Sin oferta',        clase:'bad',  ayuda:'Ninguna publicación de este producto muestra descuento hoy. Se vende a precio de lista.' },
   parcial:   { txt:'A medias',          clase:'warn', ayuda:'Algunas publicaciones tienen oferta y otras no. Las que no, se ven caras al lado de las que sí.' },
+  // Tener oferta hoy no alcanza si mañana no hay ninguna. Este estado es el
+  // único que mira para adelante: avisa antes de que el producto se caiga.
+  vence:     { txt:'Se le termina',     clase:'warn', ayuda:'Tiene oferta hoy pero se le vence dentro de los próximos ' + DIAS_AVISO + ' días y no hay ninguna aceptada que tome la posta. Si no se suma a algo, queda a precio de lista.' },
   relampago: { txt:'Falta relámpago',   clase:'acc',  ayuda:'Tiene ofertas corriendo, pero hay relámpagos disponibles sin aceptar: es exposición gratis que estás dejando pasar.' },
-  ok:        { txt:'Al día',            clase:'ok',   ayuda:'Todas las publicaciones muestran oferta hoy y no hay relámpagos pendientes.' }
+  ok:        { txt:'Al día',            clase:'ok',   ayuda:'Todas las publicaciones muestran oferta hoy, y las que se vencen ya tienen quién las reemplace.' }
 };
-const ORDEN_SALUD = { sin:0, parcial:1, relampago:2, ok:3 };
+const ORDEN_SALUD = { sin:0, parcial:1, vence:2, relampago:3, ok:4 };
 
 function saludDe(g) {
   if (g.nVig === 0)            return 'sin';
   if (g.nVig < g.pubs.length)  return 'parcial';
+  // Antes que la relámpago: perder la oferta cuesta más que no aprovechar una.
+  if (g.nSeCae > 0)            return 'vence';
   if (g.nRelampago > 0)        return 'relampago';
   return 'ok';
 }
@@ -740,6 +765,29 @@ function resolverVigencia(it) {
   it.proxima  = futuras[0] || null;
   // Hasta cuándo se sostiene el precio de hoy.
   it.hasta = gana && gana.fin ? gana.fin : null;
+
+  /* ¿Se queda sin oferta en los próximos días?
+     Tener oferta hoy no alcanza: si la que manda vence el 31 y no hay nada
+     aceptado que arranque después, el 1 la publicación queda a precio de lista
+     sin que nadie avise. Eso es lo que hay que ver venir, no descubrirlo el
+     lunes.
+
+     "Cubierto" quiere decir que hay una promoción futura que arranca antes de
+     que se caiga la de hoy, o el mismo día. Se da un día de tolerancia porque
+     Meli encadena campañas con el borde justo —DESCUENTAZOS termina el 31-ago
+     y CYBER FEST arranca el 31-ago— y eso es continuidad, no un hueco. */
+  it.diasHasta = null;
+  it.cubierto  = false;
+  if (gana && gana.fin && gana._fin !== Infinity) {
+    /* Días contados por calendario, no por horas. Una oferta que termina hoy
+       a las 23:59 no "queda 1 día": se cae hoy. Restar milisegundos y
+       redondear para arriba daba siempre un día de más. */
+    it.diasHasta = Math.max(0, Math.round((_iniDia(gana.fin) - _iniDia(new Date())) / DIA));
+    it.cubierto  = futuras.some(f => !f._sinFecha && f._ini <= gana._fin + DIA);
+  }
+  // Se queda colgada: hoy tiene oferta, se le termina pronto y no viene nada.
+  it.seCae = !!(gana && it.diasHasta != null &&
+                it.diasHasta <= DIAS_AVISO && !it.cubierto);
 }
 
 /** "3x_campaign" → 3 · contado → 0. Sirve para ordenar las opciones. */
@@ -870,6 +918,20 @@ function procesar(d) {
       nVig:  pubs.filter(p => p.vigente).length,
       // Relámpago disponible y sin aceptar: exposición gratis que estás dejando pasar.
       nRelampago: pubs.reduce((a,p) => a + p.candidatas.filter(x => x.tipo === 'LIGHTNING').length, 0),
+      // Publicaciones con oferta hoy que se caen sin reemplazo, y en cuántos
+      // días se cae la primera: es el número que dice cuánto tiempo queda.
+      nSeCae: pubs.filter(p => p.seCae).length,
+      // Cuál es el escalón que se cae primero y en cuántos días. Un producto
+      // puede tener el Contado cubierto un mes y las 6 cuotas cayéndose
+      // pasado mañana: decir solo "se le termina" deja la pregunta abierta.
+      cae: (() => {
+        const c = pubs.filter(p => p.seCae).sort((a,b) => a.diasHasta - b.diasHasta)[0];
+        return c ? { dias: c.diasHasta, escalon: cuotasPub(c), id: c.id } : null;
+      })(),
+      diasSeCae: (() => {
+        const d = pubs.filter(p => p.seCae).map(p => p.diasHasta);
+        return d.length ? Math.min(...d) : null;
+      })(),
       nSinDefinir: pubs.filter(p => !etiquetaDe(p) && !p.cuotas).length,
       nTap:  pubs.reduce((a,p) => a + p.tapadas.length, 0),
       nFut:  pubs.reduce((a,p) => a + p.futuras.length, 0)
@@ -945,9 +1007,26 @@ const vacio = (t,p) => `<div class="panel"><div class="empty"><b>${t}</b><p>${p}
 function vListado() {
   $('#tit').textContent = 'Listado de productos';
   const filtro = S.filtroSalud || 'todos';
-  const cuenta = k => S.skus.filter(g => g.salud === k).length;
 
-  const visibles = (filtro === 'todos' ? S.skus : S.skus.filter(g => g.salud === filtro))
+  /* "Se le termina" no es un estado más: es una alerta que cruza a los otros.
+     Un producto puede estar "a medias" —una publicación sin oferta— y ADEMAS
+     tener otra que se cae en dos dias. Con el resto de las tarjetas, que se
+     reparten los productos sin repetir, ese caso quedaba escondido: el badge
+     mostraba "a medias" y al filtrar por "se le termina" no aparecia, aunque
+     tuviera una publicacion por caerse.
+
+     Asi que esta tarjeta cuenta y filtra por lo que de verdad importa —hay o
+     no hay algo cayendose— aunque se superponga con otra. Vale mas encontrarlo
+     que mantener la prolijidad de que los numeros sumen justo. */
+  const seCae = g => g.nSeCae > 0;
+  const cuenta = k => k === 'vence'
+    ? S.skus.filter(seCae).length
+    : S.skus.filter(g => g.salud === k).length;
+
+  const pasa = g => filtro === 'todos' ? true
+    : filtro === 'vence' ? seCae(g) : g.salud === filtro;
+
+  const visibles = S.skus.filter(pasa)
     .filter(g => !S.q || (g.sku + ' ' + g.titulo).toLowerCase().includes(S.q.toLowerCase()));
 
   const tarjeta = (k, titulo, sub) => {
@@ -968,6 +1047,8 @@ function vListado() {
     salud:  g => ORDEN_SALUD[g.salud],
     vig:    g => g.pubs.length ? g.nVig / g.pubs.length : 0,
     rel:    g => g.nRelampago,
+    // Dentro de los que se caen, primero el que se cae antes.
+    cae:    g => g.diasSeCae == null ? Infinity : g.diasSeCae,
     cand:   g => g.nCand,
     lista:  g => Math.min(...[...g.pubs.map(p => p.lista).filter(Boolean), Infinity]),
     stock:  g => g.stock
@@ -990,7 +1071,15 @@ function vListado() {
       <td class="n"><b>${esc(g.sku)}</b></td>
       <td><b>${esc(g.titulo.slice(0,48))}</b>
         <div class="sub">${g.pubs.length} publicaciones${g.nCat?` · ${g.nCat} de catálogo`:''}</div></td>
-      <td><span class="chip ${s.clase}" title="${esc(s.ayuda)}">${s.txt}</span></td>
+      <td><span class="chip ${s.clase}" title="${esc(s.ayuda)}">${s.txt}</span>
+        ${g.cae ? `<div class="sub" style="color:var(--warn)"
+            title="Se le termina la oferta de ${esc(g.cae.escalon)} (${esc(g.cae.id)})${
+              g.nSeCae > 1 ? ' y de ' + (g.nSeCae - 1) + ' más' : ''}, y no hay ninguna aceptada que la reemplace.">${
+            g.cae.dias === 0 ? 'se cae hoy'
+            : g.cae.dias === 1 ? 'queda 1 día'
+            : 'quedan ' + g.cae.dias + ' días'}${
+            g.pubs.length > 1 ? ' · ' + esc(g.cae.escalon) : ''}${
+            g.nSeCae > 1 ? ' +' + (g.nSeCae - 1) : ''}</div>` : ''}</td>
       <td class="c n">${g.nVig} de ${g.pubs.length}</td>
       <td class="c">${g.nRelampago?`<span class="chip acc" title="Relámpagos disponibles sin aceptar">⚡ ${g.nRelampago}</span>`:'<span style="color:var(--ink3)">—</span>'}</td>
       <td class="c n">${g.nCand}</td>
@@ -1005,8 +1094,9 @@ function vListado() {
       ${tarjeta('todos','Todos','productos')}
       ${tarjeta('sin','Sin oferta','ninguna publicación con descuento')}
       ${tarjeta('parcial','A medias','algunas publicaciones sin oferta')}
+      ${tarjeta('vence','Se le termina','vence en ' + DIAS_AVISO + ' días o menos, sin reemplazo')}
       ${tarjeta('relampago','Falta relámpago','exposición gratis sin usar')}
-      ${tarjeta('ok','Al día','nada que hacer')}
+      ${tarjeta('ok','Al día','con oferta y con relevo')}
     </div>
 
     <div class="buscador">
@@ -1504,9 +1594,9 @@ function bloquePub(p, g, esCabeza) {
     const accion = sePuedeSumar(x)
       ? `<button class="btn xs" data-add="${esc(p.id)}|${esc(x.tipo)}|${esc(x.promoId)}">${x.esPropuesta?'Aceptar':'Sumar'}</button>`
       : SALIDA_BLOQUEADA[x.tipo]
-        ? `<a class="btn xs" href="https://www.mercadolibre.com.ar/promociones"
+        ? `<a class="btn xs" href="${esc(linkPromos(p.sku || p.id))}"
              target="_blank" rel="noopener"
-             title="${esc(SALIDA_BLOQUEADA[x.tipo])}">Salir en Meli ↗</a>`
+             title="${esc(SALIDA_BLOQUEADA[x.tipo])} — te lleva al listado del seller center filtrado por ${esc(p.sku || p.id)}.">Salir en Meli ↗</a>`
         : `<button class="btn xs danger" data-del="${esc(p.id)}|${esc(x.tipo)}|${esc(x.promoId)}">Salir</button>`;
     return `<tr>
       <td><span class="chip ${est[0]}" title="${esc(est[2])}">${est[1]}</span>
@@ -1579,6 +1669,9 @@ function bloquePub(p, g, esCabeza) {
         : '<span class="chip bad">sin oferta hoy</span>'}
       <span class="id">${esc(p.id)}</span>
       ${p.link?`<a href="${esc(p.link)}" target="_blank" rel="noopener" style="font-size:11.5px">ver en Meli ↗</a>`:''}
+      <a href="${esc(linkPromos(p.sku || p.id))}" target="_blank" rel="noopener"
+         style="font-size:11.5px"
+         title="Abre la Central de Promociones del seller center ya filtrada por ${esc(p.sku || p.id)}">promos en Meli ↗</a>
       <div class="conds">${conds}</div>
       <div class="sep">
         <span>Lista <b>${pes(p.lista)}</b></span>
@@ -2409,7 +2502,7 @@ function vMiPagina() {
         <button class="btn xs p" data-cupon="${esc(c.id)}">${
           S.cuponAbierto === c.id ? 'Ocultar' : 'Publicaciones'}</button>
         ${CUPONES_SOLO_ITEMS
-          ? `<a class="btn xs" href="https://www.mercadolibre.com.ar/promociones/coupons"
+          ? `<a class="btn xs" href="${esc(linkPromos())}"
                target="_blank" rel="noopener" title="Meli no habilita editar cupones por API en Argentina">Editar en Meli ↗</a>`
           : (detallado ? `<button class="btn xs" data-cup-editar="${esc(c.id)}">Editar</button>
              <button class="btn xs" data-cup-borrar="${esc(c.id)}">Borrar</button>` : '')}
@@ -2572,7 +2665,7 @@ function vMiPagina() {
           Math.max(0, Math.round((Date.now() - S.cuponesLeidos)/60000))} min</span>` : ''}
         <span class="sep-flex"></span>
         ${CUPONES_SOLO_ITEMS
-          ? `<a class="btn sm" href="https://www.mercadolibre.com.ar/promociones/coupons"
+          ? `<a class="btn sm" href="${esc(linkPromos())}"
                target="_blank" rel="noopener">Crear en el seller center ↗</a>`
           : `<button class="btn p sm" id="nuevoCup">Crear un cupón</button>`}
       </div>
