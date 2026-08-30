@@ -57,7 +57,7 @@ const P = PropertiesService.getScriptProperties();
  * sync tardara 15 segundos desde el editor y 33 desde la app, sin ninguna
  * pista de por qué. Ahora la app muestra las dos versiones y el desfasaje se ve.
  */
-const VERSION_BACK = '2026.08.30-30';
+const VERSION_BACK = '2026.08.30-34';
 
 /**
  * Contrato: qué sabe responder este backend.
@@ -1134,12 +1134,13 @@ function sumarAPromo(a) {
     throw new Error(_mensajeError(r));
   }
   const t1 = Date.now();
-  const filas = _refrescarConfirmado(a.item_id, tipo, a.promotion_id, true);
+  const conf = _refrescarConfirmado(a.item_id, tipo, a.promotion_id, true);
+  const filas = conf.filas;
   const tRefresco = Date.now() - t1;
   const t2 = Date.now();
-  // Se anota si el cambio quedó confirmado al releer, no solo que Meli
-  // contestó 200. Es la diferencia entre "lo pedí" y "está hecho".
-  const ok = _figuraAdentro(filas, tipo, a.promotion_id);
+  // Se anota si el cambio quedó confirmado, mirando la fuente que corresponda:
+  // la publicación si ya está al día, y si no la lista de la campaña.
+  const ok = conf.confirmado;
   _log('sumar', a.item_id, tipo + ' ' + (a.promotion_id || '') + ' @ ' + (a.deal_price || 'acepta'),
        'OK',
        { sku: ficha.sku, producto: ficha.producto, tipo: tipo,
@@ -1150,7 +1151,8 @@ function sumarAPromo(a) {
                            'promoción todavía no figuraba puesta.' });
   const ms = { meli: tEscritura, refresco: tRefresco, log: Date.now() - t2, total: Date.now() - t0 };
   Logger.log('sumar ' + a.item_id + ' → ' + JSON.stringify(ms));
-  return { ok: true, body: r.body, filas: filas, ms: ms };
+  return { ok: true, body: r.body, filas: filas, ms: ms,
+           confirmado: conf.confirmado, fuente: conf.fuente };
 }
 
 /**
@@ -1187,15 +1189,57 @@ function _refrescarConfirmado(itemId, tipo, promoId, quiereAdentro) {
     return adentro === !!quiereAdentro;
   };
 
-  if (concuerda(filas)) return filas;
+  if (concuerda(filas))
+    return { filas: filas, confirmado: true, fuente: 'la publicación' };
 
-  Logger.log('refresco: la foto contradice lo que se hizo (' + tipo +
-             (promoId ? ' ' + promoId : '') + '), releo en 4s');
+  // La vista de la publicación no concuerda. Antes de esperar, se le pregunta
+  // a la LISTA DE LA CAMPAÑA, que es la que ve el seller center y la que se
+  // actualiza primero. Medido: tras una baja con 200 OK, la lista del cupón ya
+  // no traía el ítem mientras la vista de la publicación siguió diciendo
+  // "started" más de un minuto. Preguntar acá evita esperar de gusto.
+  var enCamp = _enListaCampania(itemId, tipo, promoId);
+  if (enCamp !== null && enCamp === !!quiereAdentro) {
+    Logger.log('refresco: la publicación va atrasada, pero la campaña CONFIRMA');
+    return { filas: filas, confirmado: true, fuente: 'la lista de la campaña' };
+  }
+
+  Logger.log('refresco: no concuerda (' + tipo + (promoId ? ' ' + promoId : '') +
+             '), campaña dice ' + enCamp + '; releo la publicación en 4s');
   Utilities.sleep(4000);
   var segunda = _refrescarItem(itemId);
   if (segunda && segunda.length) filas = segunda;
-  Logger.log('refresco: segunda lectura ' + (concuerda(filas) ? 'CONFIRMA' : 'sigue sin confirmar'));
-  return filas;
+  var ok = concuerda(filas);
+  Logger.log('refresco: segunda lectura ' + (ok ? 'CONFIRMA' : 'sigue sin confirmar'));
+  return { filas: filas, confirmado: ok, fuente: 'la publicación' };
+}
+
+/**
+ * ¿La publicación figura dentro de esa campaña, según la lista de la campaña?
+ *
+ * Devuelve true / false, o null si no se pudo averiguar —que NO es lo mismo
+ * que "no está" y por eso no se colapsa a false—.
+ *
+ * Se usa el filtro item_id que documenta Meli: la lista pagina de a 50 y una
+ * campaña puede tener cientos de ítems, así que pedirla entera para buscar uno
+ * sería lento y además podría no venir en la primera página.
+ */
+function _enListaCampania(itemId, tipo, promoId) {
+  if (!promoId || !tipo) return null;
+  try {
+    const r = mlGet('/seller-promotions/promotions/' + encodeURIComponent(promoId) +
+                    '/items?promotion_type=' + encodeURIComponent(tipo) +
+                    '&item_id=' + encodeURIComponent(itemId) + '&app_version=v2');
+    const arr = _arr(r);
+    var enc = null;
+    arr.forEach(function (x) { if (String(x.id) === String(itemId)) enc = x; });
+    // Si el filtro no lo trajo, puede ser que no esté o que el filtro no aplique;
+    // una lista vacía con filtro por ítem se lee como "no está".
+    if (!enc) return arr.length === 0 ? false : false;
+    return enc.status === 'started' || enc.status === 'pending';
+  } catch (e) {
+    Logger.log('lista de campaña ' + promoId + ': ' + e);
+    return null;
+  }
 }
 
 /** ¿La publicación figura participando de esa promoción en estas filas? */
@@ -1247,10 +1291,11 @@ function salirDePromo(a) {
     throw new Error(_mensajeError(r));
   }
   const t1 = Date.now();
-  const filas = _refrescarConfirmado(a.item_id, a.promotion_type, a.promotion_id, false);
+  const conf = _refrescarConfirmado(a.item_id, a.promotion_type, a.promotion_id, false);
+  const filas = conf.filas;
   const tRefresco = Date.now() - t1;
   const t2 = Date.now();
-  const fuera = !_figuraAdentro(filas, a.promotion_type, a.promotion_id);
+  const fuera = conf.confirmado;
   _log('salir', a.item_id, a.promotion_type + ' ' + (a.promotion_id || ''), 'OK',
        { sku: ficha.sku, producto: ficha.producto, tipo: a.promotion_type,
          campania: _nombreCampania(filas, a.promotion_type, a.promotion_id) || a.promotion_id || '',
@@ -1259,7 +1304,8 @@ function salirDePromo(a) {
                               'promoción todavía figuraba puesta.' });
   const ms = { meli: tEscritura, refresco: tRefresco, log: Date.now() - t2, total: Date.now() - t0 };
   Logger.log('salir ' + a.item_id + ' → ' + JSON.stringify(ms));
-  return { ok: true, filas: filas, ms: ms };
+  return { ok: true, filas: filas, ms: ms,
+           confirmado: conf.confirmado, fuente: conf.fuente };
 }
 
 function ejecutarLote(acciones) {

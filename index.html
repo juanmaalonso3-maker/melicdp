@@ -362,6 +362,14 @@ dialog::backdrop{background:rgba(10,18,16,.55)}
 .fld{display:flex;flex-direction:column;gap:5px}
 .fld label{font:400 10.5px "JetBrains Mono";letter-spacing:.08em;text-transform:uppercase;color:var(--ink3)}
 .fld .help{font-size:11.5px;color:var(--ink3)}
+/* El par precio ⟷ descuento: se escribe en cualquiera de los dos. */
+.par{display:flex;gap:11px;align-items:flex-end}
+.par>div{display:flex;flex-direction:column;gap:4px;flex:1;min-width:0}
+.par-lbl{font:400 10px "JetBrains Mono";letter-spacing:.05em;color:var(--ink3)}
+.par-eq{font:400 15px "JetBrains Mono";color:var(--ink3);padding-bottom:11px;flex:0 0 auto}
+.par-pct{display:flex;align-items:center;gap:6px}
+.par-pct input{flex:1;min-width:0}
+.par-pct span{font:400 14px "JetBrains Mono";color:var(--ink3);flex:0 0 auto}
 .rango{display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:12px;color:var(--ink2)}
 .rango button{border:1px solid var(--line2);background:var(--panel2);border-radius:5px;padding:3px 8px;cursor:pointer;font:600 11px "JetBrains Mono"}
 .rango button:hover{border-color:var(--acc);color:var(--acc)}
@@ -459,7 +467,7 @@ const S = {
 /* Subilo cada vez que cambie el archivo. Sirve para saber, mirando la app,
    si el navegador está sirviendo la versión nueva o una cacheada: GitHub Pages
    guarda el index.html un rato y es fácil quedarse con el viejo sin notarlo. */
-const VERSION = '2026.08.30-31';
+const VERSION = '2026.08.30-34';
 /* Qué necesita el front del backend. Subir SOLO cuando se agrega o cambia una
    acción del /exec, no en cada retoque visual. */
 const CONTRATO_MINIMO = 4;
@@ -1458,7 +1466,24 @@ function bloquePub(p, g, esCabeza) {
              title="Estado literal que devuelve la API">api: ${esc(x.status)}</div></td>
       <td><b style="font-size:12px">${esc(nombrePromo(x))}</b>
         <div style="font:400 10px 'JetBrains Mono';color:var(--ink3)">${esc(x.tipo)}${x.aceptaSolo?' · solo aceptar':' · definís precio'}</div></td>
-      <td class="r n">${x.precio?pes(x.precio):'—'}<div style="font-size:10.5px;color:var(--ink3)">${x.promoPct!=null?'−'+pct(x.promoPct):''}</div></td>
+      <td class="r n">${x.precio?pes(x.precio):'—'}
+        <div style="font-size:10.5px;color:var(--ink3)">${x.promoPct!=null?'−'+pct(x.promoPct)+' de lista':''}</div>
+        ${(() => {
+          /* El segundo porcentaje, que es el que decide si Meli acepta.
+             La regla del 5% NO se mide contra el precio de lista sino contra
+             lo que estás vendiendo hoy, y son números muy distintos: con
+             lista 11.427, vendiendo a 7.999 y una relámpago a 7.599, contra
+             la lista da 33,5% y contra lo que vendés da 5,0%. Restando los
+             porcentajes de lista salen "3,5 puntos", que no es ninguna de las
+             dos cosas — y es la cuenta que uno hace sin querer si solo ve una
+             columna. Por eso van los dos, cada uno con su referencia escrita. */
+          const ref = p.precioActivo;
+          if (!x.precio || !ref || x.precio >= ref) return '';
+          const c = (1 - x.precio / ref) * 100;
+          return `<div style="font-size:10.5px;color:${c >= 5 ? 'var(--ok)' : 'var(--bad)'}"
+            title="La regla del 5% se mide contra lo que vendés hoy (${pes(ref)}), no contra la lista.">
+            −${pct(c)} de lo que vendés</div>`;
+        })()}</td>
       ${(() => {
         // En las campañas de "solo aceptar" no hay ventana de precio: Meli fija
         // el número y vos aceptás o no. Mostrar "—" ahí hacía pensar en un dato
@@ -2872,7 +2897,7 @@ function engancharDescuento() {
     try {
       const r = await api('sumar', cuerpo);
       const seg = fin();
-      S.resultado = Object.assign({ seg }, verificar('sumar', cuerpo, r.filas));
+      S.resultado = Object.assign({ seg }, verificar('sumar', cuerpo, r.filas, r));
       await cargar();
     } catch (e) { fin(false); toast(e.message, 'bad'); }
   };
@@ -3114,7 +3139,14 @@ function abrirSumar(o) {
         Precio <b>${pes(p.precio || p.sug)}</b>${p.meliPct!=null?` — ML pone ${p.meliPct}% y vos ${p.sellerPct}%`:''}.</div>
         ${avisoVisibilidad(visibilidad(it, p.precio, p.inicio, p.fin))}`
     : `<div class="fld"><label>Precio final al comprador</label>
-      <input type="number" id="fPrecio" value="${def?Math.round(def):''}" step="1">
+      <div class="par">
+        <div><span class="par-lbl">Precio</span>
+          <input type="number" id="fPrecio" value="${def?Math.round(def):''}" step="1"></div>
+        <span class="par-eq">=</span>
+        <div><span class="par-lbl">Descuento de la lista</span>
+          <div class="par-pct"><input type="number" id="fDesc" step="0.1" min="0" max="99"
+            value="${def && it.lista ? ((1 - def/it.lista)*100).toFixed(1) : ''}"><span>%</span></div></div>
+      </div>
       <div class="rango">
         ${p.max?`<button type="button" data-set="${p.max}">Techo ${pes(p.max)}</button>`:''}
         ${p.sug?`<button type="button" data-set="${p.sug}">Sugerido ${pes(p.sug)}</button>`:''}
@@ -3136,7 +3168,13 @@ function abrirSumar(o) {
     const v = +($('#fPrecio')||{}).value;
     if (!v || !it.lista) { el.textContent=''; return; }
     const fuera = (p.max && v > p.max) || (p.min && v < p.min);
-    el.innerHTML = `Descuento <b>${pct((1 - v/it.lista)*100)}</b>` +
+    // "Descuento 33,5%" a secas se confunde con el 5% de credibilidad, que se
+    // mide contra otra cosa. Va con la referencia escrita, y al lado el otro.
+    const dLista = (1 - v/it.lista)*100;
+    const dHoy = it.precioActivo && v < it.precioActivo
+      ? (1 - v/it.precioActivo)*100 : null;
+    el.innerHTML = `Descuento <b>${pct(dLista)}</b> de la lista` +
+      (dHoy != null ? ` · <b>${pct2(dHoy)}</b> de lo que cobrás hoy` : '') +
       (fuera?` — <span style="color:var(--bad)">fuera del rango (${pes(p.min)} a ${pes(p.max)})</span>`:'');
     // Al cambiar el precio cambia si la oferta llega a verse: se recalcula vivo.
     const vis = $('#fVis');
@@ -3146,10 +3184,39 @@ function abrirSumar(o) {
     // vendiendo hoy es la mejor referencia que tenemos, y suele ser la que Meli
     // usa. Avisar antes es mejor que comerse el rechazo.
     const cr = $('#fCred');
-    if (cr) cr.innerHTML = avisoCredibilidad(it, v);
+    if (cr) cr.innerHTML = avisoCredibilidad(it, v, p);
   };
-  $$('#sBody [data-set]').forEach(b => b.onclick = () => { $('#fPrecio').value = Math.round(+b.dataset.set); calc(); });
-  if ($('#fPrecio')) { $('#fPrecio').oninput = calc; calc(); }
+  /* Los dos campos van atados: escribís el precio y sale el descuento, o
+     escribís el descuento y sale el precio.
+
+     La regla para que no se peleen: el campo donde estás tipeando NUNCA se
+     reescribe. Si al escribir "30" en el descuento la app recalculara también
+     el descuento desde el precio redondeado, te aparecería "29,9" abajo del
+     cursor. Por eso cada uno actualiza solo al otro.
+
+     El descuento es contra la LISTA, que es como lo pensás en Actualizar
+     precios: lista = precio ÷ (1 − descuento). El otro porcentaje —el de la
+     regla del 5%, contra lo que cobrás hoy— sigue apareciendo abajo, con su
+     nombre, porque son cosas distintas y ya nos confundió una vez. */
+  const desdePrecio = () => {
+    const d = $('#fDesc'); if (!d || !it.lista) return;
+    const v = +($('#fPrecio')||{}).value;
+    d.value = v > 0 ? ((1 - v / it.lista) * 100).toFixed(1) : '';
+    calc();
+  };
+  const desdeDesc = () => {
+    const pr = $('#fPrecio'); if (!pr || !it.lista) return;
+    const d = ($('#fDesc')||{}).value;
+    pr.value = d === '' ? '' : Math.round(it.lista * (1 - (+d) / 100));
+    calc();
+  };
+  // Los botones de techo/sugerido/piso escriben el precio y arrastran el %.
+  $$('#sBody [data-set]').forEach(b => b.onclick = () => {
+    $('#fPrecio').value = Math.round(+b.dataset.set); desdePrecio();
+  });
+  if ($('#fPrecio')) { $('#fPrecio').oninput = desdePrecio; }
+  if ($('#fDesc'))   { $('#fDesc').oninput   = desdeDesc; }
+  calc();
   const err = $('#sError'); if (err) err.remove();
   $('#dSumar').showModal();
 }
@@ -3161,18 +3228,92 @@ function abrirSumar(o) {
  * tenemos ese histórico completo, pero lo que estás vendiendo hoy es la mejor
  * referencia y en la práctica es la que rebota. Avisar acá evita el rechazo.
  */
-function avisoCredibilidad(it, precio) {
+/**
+ * La regla del 5%, contada con las dos referencias a la vista.
+ *
+ * El error fácil —y ya lo cometimos— es restar porcentajes de lista. Con lista
+ * 11.427, vendiendo a 7.999 (−30,0%) y una relámpago a 7.599 (−33,5%), la resta
+ * da "3,5 puntos" y parece que no llega al 5%. Pero Meli no mide contra la
+ * lista: 7.599 es 5,0% más barato que 7.999, y por eso lo acepta. Los dos
+ * números van escritos, cada uno con su referencia, para que no haya que
+ * deducir cuál es cuál.
+ */
+/** Porcentaje con dos decimales: al filo del 5%, un decimal no alcanza. */
+const pct2 = n => (n == null || isNaN(n)) ? '—' : n.toFixed(2).replace('.', ',') + '%';
+
+function avisoCredibilidad(it, precio, promo) {
   const ref = it.precioActivo;
   if (!precio || !ref) return '';
-  const techo = Math.floor(ref * 0.95);       // 5% por debajo de lo que vendés hoy
-  if (precio <= techo) {
-    const pc = (1 - precio / ref) * 100;
-    return `<div class="aviso ok">Cumple la regla del 5%: es <b>${pct(pc)}</b> más barato
-      que los ${pes(ref)} a los que vendés hoy.</div>`;
+
+  /* ¿Contra qué precio compara Meli? Contra el más bajo de los últimos 7 días
+     ANTES de que la oferta arranque. Si la promoción que estás por poner
+     empieza cuando la de hoy ya terminó, el precio de hoy NO es esa base.
+
+     Esto daba un cartel rojo absurdo: CYBER FEST arranca el 31-ago, cuando
+     DESCUENTAZOS —que hoy vende a 307.069— ya venció. La app comparaba los
+     374.999 de la campaña futura contra los 307.069 de hoy, cantaba
+     "−22,1%, Meli lo va a rechazar", y Meli lo aceptó sin chistar. No podía
+     ser de otra manera: para el 31 de agosto ese precio ya no existe.
+
+     Cuando la oferta arranca después de que se cae la de hoy, no tenemos con
+     qué comparar —dependería de qué precio quede vigente entonces— y lo
+     honesto es decirlo en vez de inventar un veredicto. */
+  if (promo && it.vigente && promo !== it.vigente) {
+    const arranca = tIni(promo), termina = tFin(it.vigente);
+    if (arranca > termina) {
+      const d = it.lista ? (1 - precio / it.lista) * 100 : null;
+      return `<div class="aviso">Esta promoción arranca el <b>${esc(fecha(promo.inicio))}</b>,
+        cuando <b>${esc(nombrePromo(it.vigente))}</b> —la que hoy vende a ${pes(ref)}— ya terminó.
+        La regla del 5% mira el precio más bajo de los ${VENTANA} días previos al arranque, así que
+        <b>no se puede saber desde acá</b> contra qué va a comparar Meli: depende de a cuánto
+        estés vendiendo para entonces.${d != null
+          ? ` Lo que sí es seguro: a ${pes(precio)} el descuento es <b>${pct(d)}</b> de la
+             lista de ${pes(it.lista)}.` : ''}</div>`;
+    }
   }
+
+  const pc = (1 - precio / ref) * 100;
+  const deLista = it.lista ? (1 - precio / it.lista) * 100 : null;
+
+  // Los dos porcentajes, cada uno con su referencia escrita. El error fácil es
+  // restar los de lista: con lista 11.427, vendiendo a 7.999 y oferta a 7.599,
+  // contra la lista dan 30,0% y 33,5% —la resta sugiere "3,5%"— pero contra lo
+  // que cobrás son 5,0%, que es lo único que Meli mira.
+  const dosNumeros = deLista != null
+    ? `<div class="sub" style="margin-top:6px">En la pantalla vas a ver
+       <b>−${pct(deLista)}</b>, que es contra la lista de ${pes(it.lista)}. Para la regla del 5%
+       el que cuenta es el otro: <b>−${pct2(pc)}</b> contra los ${pes(ref)} que cobrás hoy.</div>`
+    : '';
+
+  if (pc >= 5.1)
+    return `<div class="aviso ok">Cumple la regla del 5%: es <b>${pct(pc)}</b> más barato
+      que los ${pes(ref)} a los que vendés hoy.${dosNumeros}</div>`;
+
+  /* La franja del filo.
+     Acá la app no puede afirmar nada, y afirmarlo ya salió mal una vez: dijo
+     "Meli va a rechazar" sobre un precio que Meli aceptó. Dos motivos:
+
+       · El precio que cobrás casi nunca es redondo. Meli devuelve 7.998,60 y la
+         pantalla muestra 7.999; el 5% de uno y del otro difieren en un peso, y
+         justo en el borde ese peso decide.
+       · La regla no compara contra lo que cobrás hoy sino contra el precio más
+         bajo de los últimos 7 días. Casi siempre son el mismo número, pero
+         "casi siempre" no es "siempre", y este aviso usa lo de hoy como
+         aproximación.
+
+     Así que en la franja se dice que está al filo y cuánto bajar para no
+     depender de la suerte, en vez de dar un veredicto que no nos consta. */
+  const seguro = Math.floor(ref * 0.9485);     // deja el 5,15%, fuera de la franja
+  if (pc >= 4.85)
+    return `<div class="aviso warn"><b>Está justo en el filo del 5%.</b>
+      A ${pes(precio)} son <b>${pct2(pc)}</b> abajo de los ${pes(ref)} que cobrás hoy — la regla
+      pide 5%. Puede entrar o rebotar: Meli compara contra el precio más bajo de los últimos
+      ${VENTANA} días y lo redondea distinto que esta pantalla, y en el borde un peso decide.
+      Con <b>${pes(seguro)}</b> o menos no depende de la suerte.${dosNumeros}</div>`;
+
   return `<div class="aviso bad"><b>Meli va a rechazar este precio.</b>
-    Hoy vendés a <b>${pes(ref)}</b>, y la oferta tiene que ser al menos <b>5% más barata</b>:
-    <b>${pes(techo)}</b> o menos. A ${pes(precio)} son solo ${pct((1 - precio/ref)*100)}.</div>`;
+    Hoy cobrás <b>${pes(ref)}</b> y la oferta tiene que ser al menos <b>5% más barata</b>.
+    A ${pes(precio)} son ${pct2(pc)}, y hace falta ${pes(seguro)} o menos.${dosNumeros}</div>`;
 }
 
 /** Deja el error a la vista dentro del diálogo, en vez de un toast que se va. */
@@ -3214,7 +3355,14 @@ function abrirManual(it) {
       <b>descuento individual</b>. Lo definís vos entero: Meli no da techo ni sugerencia acá.</div>
 
     <div class="fld"><label>Precio final al comprador</label>
-      <input type="number" id="fPrecio" value="${techo||''}" step="1">
+      <div class="par">
+        <div><span class="par-lbl">Precio</span>
+          <input type="number" id="fPrecio" value="${techo||''}" step="1"></div>
+        <span class="par-eq">=</span>
+        <div><span class="par-lbl">Descuento de la lista</span>
+          <div class="par-pct"><input type="number" id="fDesc" step="0.1" min="0" max="99"
+            value="${techo && it.lista ? ((1 - techo/it.lista)*100).toFixed(1) : ''}"><span>%</span></div></div>
+      </div>
       <div class="rango">
         ${techo?`<button type="button" data-set="${techo}">Mínimo 5% · ${pes(techo)}</button>`:''}
         ${it.lista?`<button type="button" data-set="${Math.floor(it.lista*0.9)}">10% · ${pes(Math.floor(it.lista*0.9))}</button>`:''}
@@ -3240,11 +3388,32 @@ function abrirManual(it) {
     if (!v || !it.lista) { el.textContent=''; return; }
     const d = (1 - v/it.lista)*100;
     const fuera = d < 5 || d >= 80;
-    el.innerHTML = `Descuento <b>${pct(d)}</b>` + (fuera
+    const dHoy2 = it.precioActivo && v < it.precioActivo
+      ? (1 - v/it.precioActivo)*100 : null;
+    el.innerHTML = `Descuento <b>${pct(d)}</b> de la lista` +
+      (dHoy2 != null ? ` · <b>${pct2(dHoy2)}</b> de lo que cobrás hoy` : '') + (fuera
       ? ` — <span style="color:var(--bad)">fuera del 5%–80% permitido (${pes(piso)} a ${pes(techo)})</span>` : '');
   };
-  $$('#sBody [data-set]').forEach(b => b.onclick = () => { $('#fPrecio').value = +b.dataset.set; calc(); });
-  $('#fPrecio').oninput = calc; calc();
+  // Mismo par atado que en el diálogo de sumarse: cada campo actualiza al otro
+  // y nunca a sí mismo, para no reescribir lo que estás tipeando.
+  const desdePrecio2 = () => {
+    const d = $('#fDesc'); if (!d || !it.lista) return;
+    const v = +($('#fPrecio')||{}).value;
+    d.value = v > 0 ? ((1 - v / it.lista) * 100).toFixed(1) : '';
+    calc();
+  };
+  const desdeDesc2 = () => {
+    const pr = $('#fPrecio'); if (!pr || !it.lista) return;
+    const d = ($('#fDesc')||{}).value;
+    pr.value = d === '' ? '' : Math.round(it.lista * (1 - (+d) / 100));
+    calc();
+  };
+  $$('#sBody [data-set]').forEach(b => b.onclick = () => {
+    $('#fPrecio').value = +b.dataset.set; desdePrecio2();
+  });
+  $('#fPrecio').oninput = desdePrecio2;
+  if ($('#fDesc')) $('#fDesc').oninput = desdeDesc2;
+  calc();
   $('#dSumar').showModal();
 }
 
@@ -3354,8 +3523,45 @@ function parchar(itemId, filas) {
  * actualizadas de esa publicación, se puede comprobar de verdad en vez de
  * suponer. Si no se puede confirmar, se dice — no se da por hecho.
  */
-function verificar(accion, body, filas) {
+function verificar(accion, body, filas, r) {
   const tipo = body.promotion_type;
+
+  /* El backend ya averiguó si quedó, y mirando la fuente correcta: primero la
+     publicación y, si esa va atrasada, la lista de la campaña —que es la que
+     ve el seller center y la que se actualiza primero—. Cuando manda ese dato,
+     manda ese dato: recalcularlo acá desde `filas` fue justo el error que hizo
+     que la app dijera "no quedó" sobre cosas que sí habían quedado. */
+  if (r && typeof r.confirmado === 'boolean') {
+    const quiere = accion !== 'salir';
+    if (r.confirmado === quiere || (accion === 'salir' && r.confirmado)) {
+      // La fila que corresponde a esta promo. Se prefiere una ya puesta —trae
+      // precio y fechas—, pero si las filas vienen atrasadas sirve cualquiera
+      // del mismo tipo y campaña: al menos da el nombre, que es lo que se lee.
+      const dela = (filas || []).filter(x => String(x.promo_tipo) === tipo &&
+        (!body.promotion_id || String(x.promo_id) === String(body.promotion_id)));
+      const f = dela.find(x => x.status === 'started' || x.status === 'pending') || dela[0];
+      if (accion === 'salir')
+        return { ok: true, titulo: 'Saliste de la promoción',
+                 detalle: 'Confirmado contra ' + (r.fuente || 'Mercado Libre') +
+                          '. Ojo: el reloj de credibilidad arranca ahora.' };
+      const cuando = f && f.inicio ? ' · ' + fecha(f.inicio) + (f.fin ? ' → ' + fecha(f.fin) : '') : '';
+      return { ok: true, titulo: 'Confirmado por Mercado Libre',
+               detalle: ((f && f.promo_nombre) || NOMBRE_TIPO[tipo] || tipo) + ' quedó ' +
+                        (f && f.status === 'started' ? 'activa'
+                          : f && f.status === 'pending' ? 'programada' : 'puesta') +
+                        (f && f.precio_promo ? ' a ' + pes(+f.precio_promo) : '') + cuando +
+                        '. Comprobado contra ' + (r.fuente || 'Mercado Libre') + '.' };
+    }
+    return accion === 'salir'
+      ? { ok: false, titulo: 'Puede que no haya salido',
+          detalle: 'Meli aceptó el pedido pero ni la publicación ni la lista de la campaña lo ' +
+                   'reflejan todavía. Fijate en Meli antes de rehacerlo.' }
+      : { ok: false, titulo: 'Puede que no haya quedado',
+          detalle: 'Meli aceptó el pedido pero ni la publicación ni la lista de la campaña lo ' +
+                   'reflejan todavía. Fijate en Meli antes de rehacerlo.' };
+  }
+
+  // Backend viejo, sin el dato: se deduce de las filas, como antes.
   if (!filas || !filas.length)
     return { ok: null, titulo: 'No pude confirmarlo',
              detalle: 'El pedido salió sin error, pero no me llegó el estado actualizado. Sincronizá y revisá antes de rehacerlo.' };
@@ -3401,7 +3607,7 @@ async function escribir(accion, body, mensaje, boton) {
     const filas = r && r.filas;
     if (!parchar(body.item_id, filas)) cargar();
 
-    const v = verificar(accion, body, filas);
+    const v = verificar(accion, body, filas, r);
     S.resultado = Object.assign({ item: body.item_id, seg: seg }, v);
     render();
     /* Antes, una verificación dudosa se tiraba como error: el diálogo quedaba
