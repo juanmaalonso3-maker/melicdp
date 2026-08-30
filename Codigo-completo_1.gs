@@ -1130,7 +1130,18 @@ function salirDePromo(a) {
   var qs = '?app_version=v2&promotion_type=' + encodeURIComponent(a.promotion_type);
   if (a.promotion_id) qs += '&promotion_id=' + encodeURIComponent(a.promotion_id);
   const t0 = Date.now();
-  const r = _mlEscribir('delete', '/seller-promotions/items/' + a.item_id + qs, null);
+  var r = _mlEscribir('delete', '/seller-promotions/items/' + a.item_id + qs, null);
+
+  // Sumar y sacar enseguida no funciona: Meli tarda unos segundos en registrar
+  // la oferta y mientras tanto contesta "No offers found for item". Medido con
+  // 1,2 s de espera, que no alcanzó. Si es ese error, se espera y se reintenta
+  // una vez: es la diferencia entre poder deshacer un clic y no poder.
+  if (!r.ok && /No offers found for item/i.test(String(r.texto))) {
+    Logger.log('salir ' + a.item_id + ': la oferta todavía no figura, reintento en 5s');
+    Utilities.sleep(5000);
+    r = _mlEscribir('delete', '/seller-promotions/items/' + a.item_id + qs, null);
+  }
+
   const tEscritura = Date.now() - t0;
   if (!r.ok) {
     _log('salir', a.item_id, a.promotion_type + ' ' + (a.promotion_id || ''), 'ERROR ' + r.code + ' ' + r.texto);
@@ -1184,7 +1195,30 @@ function _mensajeError(r) {
     'not upgradable':
       'Ese campo no se puede cambiar con la campaña ya arrancada. ' +
       'Con el cupón corriendo Meli solo deja tocar el nombre, la fecha de fin ' +
-      'y el presupuesto (y el presupuesto solo hacia arriba).'
+      'y el presupuesto (y el presupuesto solo hacia arriba).',
+    // Medido contra la cuenta real: Meli NO deja crear campañas de cupones por
+    // API en MLA. La documentación lo decía ("disponible solo para MLB") y
+    // resultó ser cierto para la creación, aunque los cupones ya creados sí se
+    // leen y se administran desde acá.
+    'not allowed to create this type of promotion':
+      'Mercado Libre no te deja crear campañas de cupones por API en Argentina: ' +
+      'esa parte es solo para Brasil (MLB). El cupón hay que crearlo en el seller ' +
+      'center; una vez creado, desde acá lo ves y le sumás publicaciones.',
+    // Medido: MLA tampoco está habilitado para editar ni borrar la campaña.
+    // El mensaje de Meli es literal: "Site MLA is not enabled for update seller
+    // coupon campaigns".
+    'is not enabled for update seller coupon':
+      'Mercado Libre no te deja editar campañas de cupones por API en Argentina ' +
+      '(solo Brasil). El nombre, el presupuesto y las fechas se cambian en el ' +
+      'seller center. Lo que sí podés hacer desde acá es sumar y sacar publicaciones.',
+    'is not enabled for delete seller coupon':
+      'Mercado Libre no te deja borrar campañas de cupones por API en Argentina ' +
+      '(solo Brasil). Se borra desde el seller center.',
+    // Aparece al dar de baja un ítem enseguida de haberlo sumado: la oferta
+    // todavía no quedó registrada del lado de Meli.
+    'No offers found for item':
+      'Meli dice que esa publicación no tiene ninguna oferta de ese tipo. Si la ' +
+      'acabás de sumar, esperá unos segundos y reintentá: tarda en registrarla.'
   };
   for (var k in mapa) if (clave.indexOf(k) >= 0) return mapa[k];
   return b.message || r.texto || ('Error ' + r.code);

@@ -438,10 +438,33 @@ const S = {
 /* Subilo cada vez que cambie el archivo. Sirve para saber, mirando la app,
    si el navegador está sirviendo la versión nueva o una cacheada: GitHub Pages
    guarda el index.html un rato y es fácil quedarse con el viejo sin notarlo. */
-const VERSION = '2026.08.30-25';
+const VERSION = '2026.08.30-27';
 /* Qué necesita el front del backend. Subir SOLO cuando se agrega o cambia una
    acción del /exec, no en cada retoque visual. */
 const CONTRATO_MINIMO = 4;
+
+/**
+ * Qué deja hacer Meli con los cupones en una cuenta argentina. Esto NO es una
+ * suposición: se midió contra la cuenta el 29-ago con el paso 15, endpoint por
+ * endpoint, y las respuestas fueron literales.
+ *
+ *   crear campaña   400 · "User is not allowed to create this type of promotion"
+ *   editar campaña  400 · "Site MLA is not enabled for update seller coupon campaigns"
+ *   borrar campaña  no probado (destructivo), casi seguro igual que editar
+ *   leer            200 · anda, con presupuesto, restante, usados y código
+ *   sumar ítem      201 · anda
+ *   sacar ítem      anda, pero hay que darle unos segundos después de sumar
+ *
+ * O sea: la campaña se arma y se toca en el seller center; desde acá se mira y
+ * se decide qué publicaciones entran.
+ *
+ * Los formularios de crear y editar siguen escritos y probados, apagados detrás
+ * de esta llave. Si algún día Meli habilita Argentina, no hay que tocar código:
+ * abrí la consola del navegador (F12) y pegá
+ *     localStorage.setItem('cdp_cupones_api','1')
+ * y vuelven. Para apagarlos de nuevo, removeItem con la misma clave.
+ */
+const CUPONES_SOLO_ITEMS = localStorage.getItem('cdp_cupones_api') !== '1';
 const VENTANA = 7;
 const $  = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
@@ -2285,10 +2308,13 @@ function vMiPagina() {
       </div>
 
       <div class="cupon-pie">
-        <button class="btn xs" data-cupon="${esc(c.id)}">${
+        <button class="btn xs p" data-cupon="${esc(c.id)}">${
           S.cuponAbierto === c.id ? 'Ocultar' : 'Publicaciones'}</button>
-        ${detallado ? `<button class="btn xs" data-cup-editar="${esc(c.id)}">Editar</button>
-        <button class="btn xs" data-cup-borrar="${esc(c.id)}">Borrar</button>` : ''}
+        ${CUPONES_SOLO_ITEMS
+          ? `<a class="btn xs" href="https://www.mercadolibre.com.ar/promociones/coupons"
+               target="_blank" rel="noopener" title="Meli no habilita editar cupones por API en Argentina">Editar en Meli ↗</a>`
+          : (detallado ? `<button class="btn xs" data-cup-editar="${esc(c.id)}">Editar</button>
+             <button class="btn xs" data-cup-borrar="${esc(c.id)}">Borrar</button>` : '')}
       </div>
     </div>`;
   };
@@ -2359,11 +2385,18 @@ function vMiPagina() {
         ${arrancado ? `<div class="aviso"><b>Este cupón ya arrancó.</b> Con la campaña corriendo
           Meli solo deja cambiar el nombre, la fecha de fin y el presupuesto —y el presupuesto
           solo hacia arriba—. El resto está bloqueado.</div>` : ''}
-        ${editando ? '' : `<div class="aviso"><b>Una advertencia honesta:</b> la documentación de
-          Mercado Libre dice que esta campaña está <b>"disponible solo para MLB"</b> (Brasil).
-          Tu cuenta es MLA y tenés cupones activos, así que la doc está atrasada en eso —pero no
-          probé la creación contra tu cuenta. Si te rechaza, el error va a decir por qué y queda
-          en <b>Registro</b>. Crearlo desde el seller center sigue funcionando igual.</div>`}
+        ${editando ? '' : (CUPONES_SOLO_ITEMS
+          ? `<div class="aviso bad"><b>Mercado Libre no te deja crear cupones por API.</b>
+              Lo probamos y contestó <i>"User is not allowed to create this type of promotion"</i>:
+              la creación de campañas de cupones es solo para Brasil (MLB). La documentación lo
+              decía y resultó ser cierto —tus cupones actuales los creó el seller center, no la API—.
+              <br><br><b>El cupón se crea en el seller center</b>, y una vez creado aparece acá:
+              desde esta pantalla le sumás y sacás publicaciones, mirás el presupuesto y lo ampliás.
+              El formulario queda por si algún día lo habilitan para Argentina.</div>`
+          : `<div class="aviso"><b>Una advertencia:</b> la documentación de Mercado Libre dice que
+              esta campaña está <b>"disponible solo para MLB"</b> (Brasil). Tu cuenta es MLA, así
+              que puede rebotar. Si pasa, el error te lo va a decir y queda en <b>Registro</b>;
+              crearlo desde el seller center funciona igual.</div>`)}
 
         <div class="form-desc">
           <label>Nombre <span class="lbl-nota">solo lo ves vos</span>
@@ -2432,15 +2465,28 @@ function vMiPagina() {
     </div>
 
     <div class="panel"><h3>Tus cupones
-        <span class="hint">se crean, se editan y se borran desde acá</span></h3>
+        <span class="hint">${CUPONES_SOLO_ITEMS
+          ? 'se crean en el seller center · acá se administran'
+          : 'se crean, se editan y se borran desde acá'}</span></h3>
       <div class="barra-sel">
         <button class="btn sm" id="leerCup">${detallado ? 'Actualizar detalle' : 'Leer el detalle'}</button>
         ${S.cuponesLeidos ? `<span class="sub">leído hace ${
           Math.max(0, Math.round((Date.now() - S.cuponesLeidos)/60000))} min</span>` : ''}
         <span class="sep-flex"></span>
-        <button class="btn p sm" id="nuevoCup">Crear un cupón</button>
+        ${CUPONES_SOLO_ITEMS
+          ? `<a class="btn sm" href="https://www.mercadolibre.com.ar/promociones/coupons"
+               target="_blank" rel="noopener">Crear en el seller center ↗</a>`
+          : `<button class="btn p sm" id="nuevoCup">Crear un cupón</button>`}
       </div>
       <div style="padding:0 16px 16px">
+        ${CUPONES_SOLO_ITEMS ? `<div class="aviso"><b>Qué se puede hacer desde acá y qué no.</b>
+          Lo probamos endpoint por endpoint contra tu cuenta: Mercado Libre <b>no habilita
+          Argentina</b> para crear ni editar campañas de cupones por API —contesta
+          <i>"Site MLA is not enabled"</i>, es solo para Brasil—. Así que la campaña se arma y se
+          retoca en el seller center: nombre, monto, presupuesto y fechas.
+          <br><br>Lo que <b>sí</b> anda, y es el trabajo de todos los días: ver el presupuesto que
+          te queda y <b>decidir qué publicaciones entran en cada cupón</b>.</div>
+          <div style="height:11px"></div>` : ''}
         ${!detallado ? `<div class="aviso">El presupuesto restante, los cupones usados y el código
           no bajan en la sincronización: son dos llamadas por cupón y cambian con cada venta.
           Tocá <b>Leer el detalle</b> para traerlos.</div><div style="height:11px"></div>` : ''}
@@ -2448,7 +2494,9 @@ function vMiPagina() {
           ? `<div class="cupones">${cupones.map(tarjeta).join('')}</div>`
           : `<div class="empty"><b>Todavía no hay cupones</b><p>Un cupón descuenta en el checkout
               sobre el total del carrito y se suma a la oferta que la publicación ya tenga.
-              Lo armás vos: monto, compra mínima, presupuesto y fechas.</p></div>`}
+              ${CUPONES_SOLO_ITEMS
+                ? 'La campaña se arma en el seller center; cuando exista, aparece acá para cargarle publicaciones y manejarle el presupuesto.'
+                : 'Lo armás vos: monto, compra mínima, presupuesto y fechas.'}</p></div>`}
       </div>
     </div>
 
@@ -2704,7 +2752,20 @@ function engancharFormCupon(arrancado) {
           (c.status || '—') + '. Ahora sumale publicaciones desde su tarjeta.'
       };
       render();
-    } catch (e) { fin(false); toast(e.message, 'bad'); }
+    } catch (e) {
+      fin(false);
+      /* Un toast se va solo a los pocos segundos y quedás mirando un formulario
+         lleno sin saber qué pasó. Los rechazos de sitio no habilitado quedan
+         fijos en pantalla, con las palabras exactas de Meli. */
+      if (/not allowed to create this type|is not enabled for|no te deja (crear|editar)/i.test(e.message)) {
+        S.resultado = { ok:false, titulo:'Mercado Libre no habilita esto en Argentina',
+          detalle: e.message + ' Se hace desde el seller center; acá seguís manejando qué ' +
+            'publicaciones entran en cada cupón.' };
+        render();
+        return;
+      }
+      toast(e.message, 'bad');
+    }
   };
 }
 
