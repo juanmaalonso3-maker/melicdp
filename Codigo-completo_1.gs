@@ -57,7 +57,7 @@ const P = PropertiesService.getScriptProperties();
  * sync tardara 15 segundos desde el editor y 33 desde la app, sin ninguna
  * pista de por qué. Ahora la app muestra las dos versiones y el desfasaje se ve.
  */
-const VERSION_BACK = '2026.08.30-24';
+const VERSION_BACK = '2026.08.30-30';
 
 /**
  * Contrato: qué sabe responder este backend.
@@ -1079,7 +1079,19 @@ function actualizarPrecios(cambios) {
     if (!precio || precio <= 0) return;
     (c.item_ids || []).forEach(function (id) {
       const r = _mlEscribir('put', '/items/' + id, { price: precio });
-      _log('precio', id, 'lista → ' + precio, r.ok ? 'OK' : 'ERROR ' + r.code + ' ' + r.texto);
+      const ficha = _fichaItem(id);
+      // El precio se confirma contra lo que devolvió Meli, no contra lo que
+      // pedimos: si contesta 200 con otro número, hay que verlo en el registro.
+      const quedo = r.ok && r.body && Number(r.body.price) === precio;
+      _log('precio', id, 'precio de lista → ' + precio,
+           r.ok ? 'OK' : 'ERROR ' + r.code + ' ' + r.texto,
+           { sku: ficha.sku, producto: ficha.producto, tipo: 'PRECIO',
+             precio: precio,
+             resultado: !r.ok ? 'rechazado' : (quedo ? 'hecho' : 'dudoso'),
+             confirmado: r.ok ? !!quedo : null,
+             motivo: !r.ok ? _mensajeError(r)
+                   : (quedo ? '' : 'Meli aceptó el cambio pero devolvió ' +
+                       ((r.body && r.body.price) || '?') + ' en vez de ' + precio + '.') });
       salida.push(r.ok
         ? { item_id: id, ok: true, precio: precio }
         : { item_id: id, ok: false, error: _mensajeError(r) });
@@ -1110,20 +1122,102 @@ function sumarAPromo(a) {
 
   // Se cronometra cada tramo: si algún día vuelve a tardar, el log dice dónde.
   const t0 = Date.now();
+  const ficha = _fichaItem(a.item_id);
   const r = _mlEscribir('post', '/seller-promotions/items/' + a.item_id + '?app_version=v2', body);
   const tEscritura = Date.now() - t0;
   if (!r.ok) {
-    _log('sumar', a.item_id, tipo + ' ' + (a.promotion_id || ''), 'ERROR ' + r.code + ' ' + r.texto);
+    _log('sumar', a.item_id, tipo + ' ' + (a.promotion_id || ''),
+         'ERROR ' + r.code + ' ' + r.texto,
+         { sku: ficha.sku, producto: ficha.producto, tipo: tipo,
+           campania: a.promotion_id || '', precio: a.deal_price || '',
+           resultado: 'rechazado', motivo: _mensajeError(r) });
     throw new Error(_mensajeError(r));
   }
   const t1 = Date.now();
-  const filas = _refrescarItem(a.item_id);
+  const filas = _refrescarConfirmado(a.item_id, tipo, a.promotion_id, true);
   const tRefresco = Date.now() - t1;
   const t2 = Date.now();
-  _log('sumar', a.item_id, tipo + ' ' + (a.promotion_id || '') + ' @ ' + (a.deal_price || 'acepta'), 'OK');
+  // Se anota si el cambio quedó confirmado al releer, no solo que Meli
+  // contestó 200. Es la diferencia entre "lo pedí" y "está hecho".
+  const ok = _figuraAdentro(filas, tipo, a.promotion_id);
+  _log('sumar', a.item_id, tipo + ' ' + (a.promotion_id || '') + ' @ ' + (a.deal_price || 'acepta'),
+       'OK',
+       { sku: ficha.sku, producto: ficha.producto, tipo: tipo,
+         campania: _nombreCampania(filas, tipo, a.promotion_id) || a.promotion_id || '',
+         precio: a.deal_price || '',
+         resultado: ok ? 'hecho' : 'dudoso', confirmado: ok,
+         motivo: ok ? '' : 'Meli aceptó el pedido pero al releer la publicación la ' +
+                           'promoción todavía no figuraba puesta.' });
   const ms = { meli: tEscritura, refresco: tRefresco, log: Date.now() - t2, total: Date.now() - t0 };
   Logger.log('sumar ' + a.item_id + ' → ' + JSON.stringify(ms));
   return { ok: true, body: r.body, filas: filas, ms: ms };
+}
+
+/**
+ * Refresca la publicación y NO devuelve una foto que contradiga lo que se
+ * acaba de hacer sin haberla mirado dos veces.
+ *
+ * El problema, medido: /seller-promotions/items/{id} tarda en ponerse al día
+ * después de una escritura. Con los cupones lo vimos negro sobre blanco — una
+ * baja con 200 OK y la vista del ítem siguió diciendo "started" durante más de
+ * un minuto—. Como la app confirma contra estas filas, una foto vieja le hacía
+ * decir "No salió" o "No quedó guardado" sobre un cambio que Meli sí aplicó.
+ * Eso es lo peor que puede pasar: te manda a rehacer algo ya hecho.
+ *
+ * Entonces: si la primera lectura contradice la intención, se espera y se lee
+ * otra vez. Si la segunda confirma, listo. Si vuelve a contradecir, se devuelve
+ * eso —puede ser un rechazo real y hay que decirlo—, pero ya con dos lecturas
+ * separadas en el tiempo, no con una apurada.
+ *
+ * quiereAdentro: true si acabás de sumarte, false si acabás de salir.
+ */
+function _refrescarConfirmado(itemId, tipo, promoId, quiereAdentro) {
+  var filas = _refrescarItem(itemId);
+
+  var concuerda = function (fs) {
+    if (!fs || !fs.length) return false;       // sin datos no se puede afirmar
+    var suyas = fs.filter(function (f) {
+      return String(f.promo_tipo) === String(tipo) &&
+             (!promoId || String(f.promo_id) === String(promoId));
+    });
+    // "candidate" no es estar adentro: es Meli ofreciéndotela.
+    var adentro = suyas.filter(function (f) {
+      return f.status === 'started' || f.status === 'pending';
+    }).length > 0;
+    return adentro === !!quiereAdentro;
+  };
+
+  if (concuerda(filas)) return filas;
+
+  Logger.log('refresco: la foto contradice lo que se hizo (' + tipo +
+             (promoId ? ' ' + promoId : '') + '), releo en 4s');
+  Utilities.sleep(4000);
+  var segunda = _refrescarItem(itemId);
+  if (segunda && segunda.length) filas = segunda;
+  Logger.log('refresco: segunda lectura ' + (concuerda(filas) ? 'CONFIRMA' : 'sigue sin confirmar'));
+  return filas;
+}
+
+/** ¿La publicación figura participando de esa promoción en estas filas? */
+function _figuraAdentro(filas, tipo, promoId) {
+  if (!filas || !filas.length) return false;
+  return filas.some(function (f) {
+    return String(f.promo_tipo) === String(tipo) &&
+           (!promoId || String(f.promo_id) === String(promoId)) &&
+           (f.status === 'started' || f.status === 'pending');
+  });
+}
+
+/** El nombre de la campaña, para que el registro no muestre un P-MLA1790... */
+function _nombreCampania(filas, tipo, promoId) {
+  if (!filas) return '';
+  for (var i = 0; i < filas.length; i++) {
+    const f = filas[i];
+    if (String(f.promo_tipo) === String(tipo) &&
+        (!promoId || String(f.promo_id) === String(promoId)) && f.promo_nombre)
+      return f.promo_nombre;
+  }
+  return '';
 }
 
 function salirDePromo(a) {
@@ -1143,15 +1237,26 @@ function salirDePromo(a) {
   }
 
   const tEscritura = Date.now() - t0;
+  const ficha = _fichaItem(a.item_id);
   if (!r.ok) {
-    _log('salir', a.item_id, a.promotion_type + ' ' + (a.promotion_id || ''), 'ERROR ' + r.code + ' ' + r.texto);
+    _log('salir', a.item_id, a.promotion_type + ' ' + (a.promotion_id || ''),
+         'ERROR ' + r.code + ' ' + r.texto,
+         { sku: ficha.sku, producto: ficha.producto, tipo: a.promotion_type,
+           campania: a.promotion_id || '', resultado: 'rechazado',
+           motivo: _mensajeError(r) });
     throw new Error(_mensajeError(r));
   }
   const t1 = Date.now();
-  const filas = _refrescarItem(a.item_id);
+  const filas = _refrescarConfirmado(a.item_id, a.promotion_type, a.promotion_id, false);
   const tRefresco = Date.now() - t1;
   const t2 = Date.now();
-  _log('salir', a.item_id, a.promotion_type + ' ' + (a.promotion_id || ''), 'OK');
+  const fuera = !_figuraAdentro(filas, a.promotion_type, a.promotion_id);
+  _log('salir', a.item_id, a.promotion_type + ' ' + (a.promotion_id || ''), 'OK',
+       { sku: ficha.sku, producto: ficha.producto, tipo: a.promotion_type,
+         campania: _nombreCampania(filas, a.promotion_type, a.promotion_id) || a.promotion_id || '',
+         resultado: fuera ? 'hecho' : 'dudoso', confirmado: fuera,
+         motivo: fuera ? '' : 'Meli aceptó el pedido pero al releer la publicación la ' +
+                              'promoción todavía figuraba puesta.' });
   const ms = { meli: tEscritura, refresco: tRefresco, log: Date.now() - t2, total: Date.now() - t0 };
   Logger.log('salir ' + a.item_id + ' → ' + JSON.stringify(ms));
   return { ok: true, filas: filas, ms: ms };
@@ -1358,10 +1463,15 @@ function crearCupon(c) {
 
   const r = _mlEscribir('post', '/seller-promotions/promotions?app_version=v2', body);
   if (!r.ok) {
-    _log('cupon_crear', '', body.name + ' ' + sub, 'ERROR ' + r.code + ' ' + r.texto);
+    _log('cupon_crear', '', body.name + ' ' + sub, 'ERROR ' + r.code + ' ' + r.texto,
+         { tipo:'CUPÓN', campania: body.name, resultado:'rechazado',
+           precio: body.fixed_amount || body.fixed_percentage || '',
+           motivo: _mensajeError(r) });
     throw new Error(_mensajeError(r));
   }
-  _log('cupon_crear', (r.body || {}).id || '', body.name + ' ' + sub + ' $' + body.budget, 'OK');
+  _log('cupon_crear', (r.body || {}).id || '', 'presupuesto $' + body.budget, 'OK',
+       { tipo:'CUPÓN', campania: body.name, resultado:'hecho', confirmado: !!(r.body||{}).id,
+         precio: body.fixed_amount || body.fixed_percentage || '' });
   return { ok: true, cupon: r.body, lista: leerCupones() };
 }
 
@@ -1383,10 +1493,14 @@ function editarCupon(promotionId, cambios) {
   const r = _mlEscribir('put', '/seller-promotions/promotions/' + promotionId +
                         '?app_version=v2', body);
   if (!r.ok) {
-    _log('cupon_editar', promotionId, JSON.stringify(body), 'ERROR ' + r.code + ' ' + r.texto);
+    _log('cupon_editar', promotionId, JSON.stringify(body), 'ERROR ' + r.code + ' ' + r.texto,
+         { tipo:'CUPÓN', campania: body.name || promotionId, resultado:'rechazado',
+           motivo: _mensajeError(r) });
     throw new Error(_mensajeError(r));
   }
-  _log('cupon_editar', promotionId, JSON.stringify(body), 'OK');
+  _log('cupon_editar', promotionId, JSON.stringify(body), 'OK',
+       { tipo:'CUPÓN', campania: (r.body||{}).name || body.name || promotionId,
+         resultado:'hecho', confirmado:true });
   return { ok: true, cupon: r.body, lista: leerCupones() };
 }
 
@@ -1395,19 +1509,104 @@ function borrarCupon(promotionId) {
   const r = _mlEscribir('delete', '/seller-promotions/promotions/' + promotionId +
                         '?promotion_type=SELLER_COUPON_CAMPAIGN&app_version=v2', null);
   if (!r.ok) {
-    _log('cupon_borrar', promotionId, '', 'ERROR ' + r.code + ' ' + r.texto);
+    _log('cupon_borrar', promotionId, '', 'ERROR ' + r.code + ' ' + r.texto,
+         { tipo:'CUPÓN', campania: promotionId, resultado:'rechazado',
+           motivo: _mensajeError(r) });
     throw new Error(_mensajeError(r));
   }
-  _log('cupon_borrar', promotionId, '', 'OK');
+  _log('cupon_borrar', promotionId, '', 'OK',
+       { tipo:'CUPÓN', campania: promotionId, resultado:'hecho', confirmado:true });
   return { ok: true, lista: leerCupones() };
 }
 
 
-function _log(accion, item, detalle, resultado) {
+/* ═══════════════════════════════════════════════════════════════════════════
+   EL REGISTRO
+   Un renglón por cada cosa que la app escribió en Mercado Libre.
+
+   Antes guardaba cinco datos —hora, acción, item_id, un texto suelto y "OK"—
+   y con eso no alcanzaba. Cuando hubo que averiguar por qué la app había
+   dicho "no salió" sobre algo que sí había salido, el registro no podía
+   contestarlo: no decía de qué producto era, ni a qué precio, ni —lo más
+   importante— si el cambio había quedado de verdad. Un "OK" ahí solo quería
+   decir "Meli contestó 200", que es otra cosa.
+
+   Ahora cada renglón guarda:
+     sku, producto     para leerlo sin tener que buscar el MLA en otro lado
+     campania          el nombre, no el P-MLA1790...
+     precio            a cuánto quedó
+     resultado         hecho / rechazado / dudoso
+     confirmado        si al releer la publicación el cambio estaba
+     motivo            en castellano cuando Meli rechaza
+     tecnico           la respuesta cruda, para cuando haga falta el detalle
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+const LOG_CAB = ['ts','accion','item_id','sku','producto','tipo','campania',
+                 'precio','resultado','confirmado','motivo','detalle','tecnico'];
+
+/**
+ * Anota una escritura.
+ *
+ * d es un objeto: { item_id, sku, producto, tipo, campania, precio,
+ *                   resultado, confirmado, motivo, detalle, tecnico }
+ * Se mantiene la firma vieja _log(accion, item, detalle, resultado) para no
+ * romper las llamadas que ya existen.
+ */
+function _log(accion, item, detalle, resultado, extra) {
   try {
-    _hoja('Log', ['ts','accion','item_id','detalle','resultado'])
-      .appendRow([new Date(), accion, item, detalle, resultado]);
+    const sh = _hojaLog();
+    const d = extra || {};
+    const crudo = String(resultado || '');
+    // "OK" a secas es engañoso: dice que Meli contestó 200, no que el cambio
+    // haya quedado. La palabra que va acá distingue las tres cosas.
+    const estado = d.resultado || (crudo.indexOf('OK') === 0 ? 'hecho' : 'rechazado');
+    sh.appendRow([
+      new Date(), accion, item || '', d.sku || '', d.producto || '',
+      d.tipo || '', d.campania || '', d.precio != null ? d.precio : '',
+      estado,
+      d.confirmado == null ? '' : (d.confirmado ? 'sí' : 'no'),
+      d.motivo || (estado === 'rechazado' ? _motivoCorto(crudo) : ''),
+      detalle || '', crudo.slice(0, 500)
+    ]);
+  } catch (e) { Logger.log('log: ' + e); }
+}
+
+/** La hoja Log, agrandándole la cabecera si venía de la versión de 5 columnas. */
+function _hojaLog() {
+  const sh = _hoja('Log', LOG_CAB);
+  try {
+    const ancho = sh.getLastColumn();
+    if (ancho < LOG_CAB.length) {
+      // Los renglones viejos se quedan como están: sus columnas nuevas van
+      // vacías y el front las muestra igual. No se reescribe historia.
+      sh.getRange(1, 1, 1, LOG_CAB.length).setValues([LOG_CAB])
+        .setFontWeight('bold').setBackground('#EEF2F1');
+    }
   } catch (e) {}
+  return sh;
+}
+
+/** Saca el motivo en castellano de una respuesta cruda de Meli. */
+function _motivoCorto(texto) {
+  var body = null;
+  try { body = JSON.parse(String(texto).replace(/^ERROR \d+ /, '')); } catch (e) {}
+  if (!body) return String(texto).slice(0, 160);
+  return _mensajeError({ code: 0, body: body, texto: String(texto) });
+}
+
+/** Los datos del producto para que el registro se lea sin decodificar nada. */
+function _fichaItem(itemId) {
+  try {
+    const sh = _ss().getSheetByName('Datos');
+    if (!sh || sh.getLastRow() < 2) return {};
+    const cab = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0];
+    const cId = cab.indexOf('item_id'), cSku = cab.indexOf('sku'), cTit = cab.indexOf('titulo');
+    const todo = sh.getRange(2, 1, sh.getLastRow() - 1, sh.getLastColumn()).getValues();
+    for (var i = 0; i < todo.length; i++)
+      if (String(todo[i][cId]) === String(itemId))
+        return { sku: todo[i][cSku], producto: String(todo[i][cTit] || '').slice(0, 60) };
+  } catch (e) {}
+  return {};
 }
 
 

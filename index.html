@@ -313,6 +313,27 @@ tr.activa .flecha{transform:rotate(90deg);border-color:var(--acc);color:var(--ac
 .form-desc input,.form-desc select{font:400 13px "JetBrains Mono";padding:8px 10px;
   border:1px solid var(--line2);border-radius:6px;background:var(--panel);color:var(--ink);width:100%}
 .form-desc input:disabled,.form-desc select:disabled{opacity:.5;cursor:not-allowed}
+
+/* ── registro ── */
+.tabs{display:flex;gap:7px;flex-wrap:wrap}
+.tab{display:inline-flex;align-items:center;gap:7px;background:var(--panel);
+  border:1px solid var(--line);border-radius:var(--r);padding:8px 13px;cursor:pointer;
+  font:500 12.5px/1 inherit;color:var(--ink2);transition:border-color .12s,color .12s}
+.tab:hover{border-color:var(--line2);color:var(--ink)}
+.tab.on{border-color:var(--acc);color:var(--acc);background:var(--acc2)}
+.tab .b{font:600 10.5px "JetBrains Mono";background:var(--line2);color:var(--ink2);
+  border-radius:99px;padding:2px 6px}
+.tab.on .b{background:var(--acc);color:#fff}
+.listado tr.log-mal td{background:var(--badbg)}
+.listado tr.log-dudo td{background:var(--warnbg)}
+.repe{font:600 9.5px "JetBrains Mono";letter-spacing:.06em;text-transform:uppercase;
+  color:var(--warn);margin-top:4px;cursor:help}
+.crudo{margin-top:5px}
+.crudo summary{font:400 10.5px "JetBrains Mono";color:var(--ink3);cursor:pointer}
+.crudo summary:hover{color:var(--acc)}
+.crudo code{display:block;margin-top:5px;padding:7px 9px;background:var(--panel2);
+  border-radius:5px;font:400 10.5px/1.5 "JetBrains Mono";color:var(--ink2);
+  white-space:pre-wrap;word-break:break-all}
 .sub{font:400 11px "JetBrains Mono";color:var(--ink3);margin-top:2px}
 
 .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:11px}
@@ -427,7 +448,7 @@ const S = {
   url: localStorage.getItem('cdp_url') || '',
   key: localStorage.getItem('cdp_key') || '',
   data:null, filas:[], items:[], skus:[], camps:[], reloj:{}, log:[], etiquetas:{}, relampagos:[], selRel:new Set(),
-  vista:'listado', q:'', filtroSalud:'todos', descGlobal:30, skuSel: localStorage.getItem('cdp_sku') || '', campFiltro:null, sel:new Set(),
+  vista:'listado', q:'', filtroSalud:'todos', logFiltro:'todos', descGlobal:30, skuSel: localStorage.getItem('cdp_sku') || '', campFiltro:null, sel:new Set(),
   // Precios: se pueden tener varios productos desplegados a la vez, y el
   // descuento se recuerda POR CONDICIÓN DE VENTA, no por producto.
   preciosAbiertos:new Set(), precioEdit:{},
@@ -438,7 +459,7 @@ const S = {
 /* Subilo cada vez que cambie el archivo. Sirve para saber, mirando la app,
    si el navegador está sirviendo la versión nueva o una cacheada: GitHub Pages
    guarda el index.html un rato y es fácil quedarse con el viejo sin notarlo. */
-const VERSION = '2026.08.30-27';
+const VERSION = '2026.08.30-31';
 /* Qué necesita el front del backend. Subir SOLO cuando se agrega o cambia una
    acción del /exec, no en cada retoque visual. */
 const CONTRATO_MINIMO = 4;
@@ -2587,18 +2608,41 @@ function engancharMiPagina(cupones, arrancado) {
     } catch (e) { fin(false); toast(e.message, 'bad'); }
   });
 
-  /* ── sumar o sacar una publicación de un cupón ── */
+  /* ── sumar o sacar una publicación de un cupón ──
+     La confirmación NO se hace contra las filas del ítem. Meli tiene dos
+     vistas de lo mismo y no se actualizan juntas:
+
+       /promotions/{cupón}/items   quiénes están en el cupón — es la que manda
+       /items/{publicación}        qué promos tiene un ítem — tarda más
+
+     Lo comprobamos en la cuenta: después de una baja con 200 OK, la lista del
+     cupón ya no la traía y la vista del ítem seguía diciendo "started". Si
+     confirmáramos contra la segunda, la app te diría "no quedó guardado"
+     cuando en realidad sí quedó, que es peor que no decir nada. */
   $$('[data-cup-accion]').forEach(b => b.onclick = async () => {
     const esSalir = b.dataset.cupAccion === 'salir';
+    const item = b.dataset.item, promo = b.dataset.promo;
     // El cupón no lleva precio: el descuento se aplica en el checkout.
-    const cuerpo = { item_id: b.dataset.item, promotion_type: 'SELLER_COUPON_CAMPAIGN',
-                     promotion_id: b.dataset.promo };
+    const cuerpo = { item_id: item, promotion_type: 'SELLER_COUPON_CAMPAIGN',
+                     promotion_id: promo };
     const fin = ocupar(b, esSalir ? 'Sacando' : 'Sumando', 'cupon');
     try {
-      const r = await api(esSalir ? 'salir' : 'sumar', cuerpo);
+      await api(esSalir ? 'salir' : 'sumar', cuerpo);
       const seg = fin();
-      S.resultado = Object.assign({ seg }, verificar(esSalir ? 'salir' : 'sumar', cuerpo, r.filas));
-      await cargarCupones();
+      await cargarCupones();          // relee la lista del cupón, la buena
+      const c = (S.cupones || []).find(x => x.id === promo);
+      const e = c && (c.items || []).find(x => String(x.id) === item);
+      const adentro = !!(e && (e.status === 'started' || e.status === 'pending'));
+      const nom = c ? (c.nombre || promo) : promo;
+      S.resultado = adentro === !esSalir
+        ? { ok:true, seg, titulo:'Confirmado por Mercado Libre',
+            detalle: item + (esSalir ? ' quedó fuera de ' : ' quedó adentro de ') + '"' + nom +
+              '". Lo comprobé releyendo la lista de publicaciones del cupón, no la del ítem: ' +
+              'esa tarda en actualizarse y no sirve para confirmar.' }
+        : { ok:false, seg, titulo:'No quedó guardado',
+            detalle:'Mercado Libre aceptó el pedido pero la lista de "' + nom + '" ' +
+              (esSalir ? 'sigue teniendo ' : 'no trae ') + item +
+              '. Reintentá en unos segundos; si sigue igual, revisalo en el seller center.' };
       await cargar();
     } catch (e) { fin(false); toast(e.message, 'bad'); }
   });
@@ -2890,21 +2934,160 @@ const avisoOrden = () => `<div class="aviso ok"><b>El orden correcto para subir 
   la ventana — son la forma de vender con descuento sin frenar el reloj de credibilidad.</div>`;
 
 /* ═══ VISTA 5 · REGISTRO ═══ */
+/* ═══════════════════════════════════════════════════════════
+   REGISTRO
+   Todo lo que la app escribió en Mercado Libre, legible sin decodificar nada.
+
+   La versión vieja mostraba cinco columnas crudas: hora, "salir",
+   "MLA2800103864", "DEAL P-MLA17907074" y "OK". Con eso no se podía contestar
+   la única pregunta que importa —¿quedó hecho o no?—, porque ese "OK" quería
+   decir "Meli contestó 200", que no es lo mismo. Cuando la app avisó mal sobre
+   una baja que sí había salido, el registro no sirvió para darse cuenta, y la
+   acción se repitió tres veces esa noche.
+
+   Ahora cada renglón dice de qué producto es, en qué campaña, a qué precio y
+   —lo principal— si al releer la publicación el cambio estaba puesto:
+
+     hecho      Meli aceptó y al releer figuraba. Es lo normal.
+     dudoso     Meli aceptó pero al releer todavía no figuraba. Casi siempre
+                es la vista de la publicación yendo atrasada, no un fallo.
+     rechazado  Meli lo rechazó, con el motivo en castellano.
+
+   Y marca las repeticiones: si la misma acción sobre el mismo producto
+   aparece dos veces seguidas, es la firma de que la app avisó mal y vos lo
+   volviste a hacer. Eso ahora se ve.
+   ═══════════════════════════════════════════════════════════ */
+
+const ACCION_LABEL = {
+  sumar:'sumarse', salir:'salir', precio:'precio de lista',
+  cupon_crear:'crear cupón', cupon_editar:'editar cupón', cupon_borrar:'borrar cupón',
+  etiqueta:'etiqueta'
+};
+
+/** Los tres estados posibles, con el color y la explicación. */
+const RESULTADO = {
+  hecho:     { clase:'ok',   txt:'hecho',
+               ayuda:'Meli lo aceptó y al releer la publicación el cambio estaba puesto.' },
+  dudoso:    { clase:'warn', txt:'dudoso',
+               ayuda:'Meli lo aceptó pero al releer todavía no figuraba. Casi siempre es la vista de la publicación yendo atrasada; fijate en Meli antes de rehacerlo.' },
+  rechazado: { clase:'bad',  txt:'rechazado',
+               ayuda:'Meli lo rechazó. El motivo está en la columna de al lado.' }
+};
+
+function estadoLog(l) {
+  const r = String(l.resultado || '');
+  if (RESULTADO[r]) return r;
+  // Renglones viejos, de cuando solo se guardaba "OK" o "ERROR ...".
+  return r.indexOf('OK') === 0 ? 'hecho' : r ? 'rechazado' : 'hecho';
+}
+
 function vLog() {
   $('#tit').textContent = 'Registro';
-  const filas = [...S.log].reverse().map(l => `<tr>
-    <td class="n" style="white-space:nowrap;font-size:11.5px">${esc(String(l.ts).slice(0,19).replace('T',' '))}</td>
-    <td><span class="chip ${l.accion==='salir'?'warn':'acc'}">${esc(l.accion)}</span></td>
-    <td class="n" style="font-size:11.5px">${esc(l.item_id)}</td>
-    <td style="font-size:11.5px">${esc(l.detalle)}</td>
-    <td style="font-size:11.5px;color:${String(l.resultado).startsWith('OK')?'var(--ok)':'var(--bad)'}">${esc(String(l.resultado).slice(0,90))}</td>
-  </tr>`).join('');
-  $('#wrap').innerHTML = `<div class="panel"><h3>Todo lo que la app escribió en Mercado Libre</h3>
-    <div class="scroll"><table>
-      <thead><tr><th>Cuándo</th><th>Acción</th><th>Ítem</th><th>Detalle</th><th>Resultado</th></tr></thead>
-      <tbody>${filas || '<tr><td colspan="5"><div class="empty"><b>Sin movimientos</b><p>Todavía no se escribió nada desde acá.</p></div></td></tr>'}</tbody>
+  const todo = [...S.log].reverse();
+
+  /* Repeticiones: misma acción, mismo ítem, misma campaña, dentro de diez
+     minutos. Es la huella de haber rehecho algo porque la app avisó mal. */
+  const repes = new Set();
+  todo.forEach((l, i) => {
+    for (let j = i + 1; j < todo.length; j++) {
+      const o = todo[j];
+      if (Math.abs(Date.parse(l.ts) - Date.parse(o.ts)) > 10 * 60000) break;
+      if (o.accion === l.accion && String(o.item_id) === String(l.item_id) &&
+          String(o.campania || o.detalle) === String(l.campania || l.detalle)) {
+        repes.add(i); repes.add(j);
+      }
+    }
+  });
+
+  const filtro = S.logFiltro || 'todos';
+  const cuenta = k => todo.filter(l => estadoLog(l) === k).length;
+  const visibles = todo
+    .map((l, i) => ({ l, i }))
+    .filter(({l}) => filtro === 'todos' || estadoLog(l) === filtro)
+    .filter(({l}) => !S.q || (String(l.sku||'') + ' ' + String(l.producto||'') + ' ' +
+      String(l.item_id||'') + ' ' + String(l.campania||'') + ' ' + String(l.detalle||''))
+      .toLowerCase().includes(S.q.toLowerCase()));
+
+  const fechaHora = ts => {
+    const d = new Date(ts);
+    return isNaN(d) ? String(ts).slice(0,16)
+      : d.toLocaleString('es-AR', {day:'2-digit', month:'short', hour:'2-digit',
+                                   minute:'2-digit', timeZone:TZ_AR});
+  };
+
+  const fila = ({l, i}) => {
+    const e = estadoLog(l), R = RESULTADO[e];
+    const rep = repes.has(i);
+    return `<tr class="${e==='rechazado'?'log-mal':e==='dudoso'?'log-dudo':''}">
+      <td class="n" style="white-space:nowrap;font-size:11.5px">${esc(fechaHora(l.ts))}</td>
+      <td><span class="chip ${l.accion==='salir'?'warn':'acc'}">${
+        esc(ACCION_LABEL[l.accion] || l.accion)}</span>
+        ${rep ? '<div class="repe" title="La misma acción se repitió en pocos minutos. Suele pasar cuando la app avisa mal y uno lo rehace.">repetida</div>' : ''}</td>
+      <td>${l.sku ? `<b class="n">${esc(l.sku)}</b>` : '<span style="color:var(--ink3)">—</span>'}
+        <div class="sub">${esc(String(l.producto || l.item_id || '').slice(0,40))}</div></td>
+      <td>${esc(l.campania || l.detalle || '—')}
+        ${l.tipo ? `<div class="sub">${esc(tipoPromoCorto(l.tipo))}</div>` : ''}</td>
+      <td class="r n">${l.precio ? pes(+l.precio) : '<span style="color:var(--ink3)">—</span>'}</td>
+      <td><span class="chip ${R.clase}" title="${esc(R.ayuda)}">${R.txt}</span></td>
+      <td style="font-size:11.5px;max-width:40ch">${
+        l.motivo ? esc(String(l.motivo).slice(0,220))
+                 : '<span style="color:var(--ink3)">—</span>'}
+        ${l.tecnico ? `<details class="crudo"><summary>ver respuesta de Meli</summary><code>${
+          esc(String(l.tecnico).slice(0,400))}</code></details>` : ''}</td>
+    </tr>`;
+  };
+
+  const tab = (k, t, n) => `<button class="tab${filtro===k?' on':''}" data-logf="${k}">${t}
+    <span class="b">${n}</span></button>`;
+
+  $('#wrap').innerHTML = `
+    <div class="aviso">Cada renglón es algo que esta app le escribió a Mercado Libre.
+      <b>hecho</b> quiere decir que Meli lo aceptó <i>y</i> que al releer la publicación el cambio
+      estaba puesto — no solamente que contestó que sí.</div>
+
+    <div class="buscador">
+      <input type="text" id="qlog" placeholder="Buscar por SKU, producto o campaña" value="${esc(S.q)}" autocomplete="off">
+      <span style="color:var(--ink3);font-size:12px">${visibles.length} de ${todo.length}</span>
+    </div>
+
+    <div class="tabs">
+      ${tab('todos','Todo',todo.length)}
+      ${tab('hecho','Hechos',cuenta('hecho'))}
+      ${tab('dudoso','Dudosos',cuenta('dudoso'))}
+      ${tab('rechazado','Rechazados',cuenta('rechazado'))}
+    </div>
+
+    ${repes.size ? `<div class="aviso warn"><b>Hay ${repes.size} renglones marcados como
+      repetidos.</b> Son acciones iguales sobre el mismo producto en pocos minutos: la huella
+      típica de que la app avisó mal y se rehizo algo que ya estaba hecho. Antes de repetir una
+      acción, mirá si el renglón anterior dice <b>dudoso</b> y no <b>rechazado</b>: dudoso casi
+      siempre significa que sí quedó.</div>` : ''}
+
+    <div class="panel"><div class="scroll"><table class="listado">
+      <thead><tr>
+        <th>Cuándo</th><th>Acción</th><th>Producto</th><th>Campaña</th>
+        <th class="r">Precio</th><th>Resultado</th><th>Detalle</th>
+      </tr></thead>
+      <tbody>${visibles.map(fila).join('') ||
+        '<tr><td colspan="7"><div class="empty"><b>Nada por acá</b><p>' +
+        (todo.length ? 'Ningún movimiento coincide con el filtro.'
+                     : 'Todavía no se escribió nada desde la app.') + '</p></div></td></tr>'}</tbody>
     </table></div></div>`;
+
+  $$('[data-logf]').forEach(b => b.onclick = () => { S.logFiltro = b.dataset.logf; render(); });
+  const q = $('#qlog');
+  if (q) { let t; q.oninput = ev => { clearTimeout(t);
+    t = setTimeout(() => { S.q = ev.target.value.trim(); render();
+      const c = $('#qlog'); if (c) { c.focus(); c.selectionStart = c.value.length; } }, 250); }; }
 }
+
+/** El tipo de promo en corto, para la columna de campaña. */
+const tipoPromoCorto = t => ({
+  LIGHTNING:'relámpago', PRICE_DISCOUNT:'descuento propio', DOD:'oferta del día',
+  SMART:'inteligente', DEAL:'campaña', PRICE_MATCHING:'igualación',
+  PRE_NEGOTIATED:'pre-negociada', SELLER_COUPON_CAMPAIGN:'cupón',
+  UNHEALTHY_STOCK:'liquidación', PRECIO:'precio de lista', 'CUPÓN':'cupón'
+}[t] || String(t).toLowerCase());
 
 /* ═══ SUMAR ═══ */
 let sumarActual = null;
@@ -3181,15 +3364,25 @@ function verificar(accion, body, filas) {
     (!body.promotion_id || String(f.promo_id) === String(body.promotion_id)));
   const adentro = suyas.filter(f => f.status === 'started' || f.status === 'pending');
 
+  /* Ojo con lo que sigue: estas filas salen de /seller-promotions/items/{id},
+     que tarda en ponerse al día después de escribir. El backend ya relee una
+     segunda vez cuando la primera foto contradice lo que se hizo, así que si
+     igual contradice hay motivo para dudar — pero no es una sentencia. Por eso
+     el texto dice qué mirar en vez de afirmar que falló. */
   if (accion === 'salir') {
     return adentro.length
-      ? { ok: false, titulo: 'No salió', detalle: 'La promoción sigue figurando como aceptada en Mercado Libre.' }
+      ? { ok: false, titulo: 'Puede que no haya salido',
+          detalle: 'Meli aceptó el pedido pero, releyendo dos veces, la promoción sigue figurando ' +
+                   'como aceptada. A veces es la vista de la publicación que va atrasada: fijate ' +
+                   'en Meli antes de rehacerlo, y si allá ya salió, es solo el refresco.' }
       : { ok: true,  titulo: 'Saliste de la promoción', detalle: 'Ya no participa. Ojo: el reloj de credibilidad arranca ahora.' };
   }
 
   if (!adentro.length)
-    return { ok: false, titulo: 'No quedó guardado',
-             detalle: 'Mercado Libre aceptó el pedido pero la promoción sigue figurando como disponible. No se aplicó.' };
+    return { ok: false, titulo: 'Puede que no haya quedado',
+             detalle: 'Meli aceptó el pedido pero, releyendo dos veces, la promoción sigue ' +
+                      'figurando como disponible. A veces es la vista de la publicación que va ' +
+                      'atrasada: fijate en Meli antes de rehacerlo, y si allá ya está, es solo el refresco.' };
 
   const f = adentro[0];
   const cuando = f.inicio ? ' · ' + fecha(f.inicio) + (f.fin ? ' → ' + fecha(f.fin) : '') : '';
@@ -3211,7 +3404,13 @@ async function escribir(accion, body, mensaje, boton) {
     const v = verificar(accion, body, filas);
     S.resultado = Object.assign({ item: body.item_id, seg: seg }, v);
     render();
-    if (v.ok === false) throw new Error(v.detalle);
+    /* Antes, una verificación dudosa se tiraba como error: el diálogo quedaba
+       abierto con un cartel rojo y uno volvía a apretar. Pero acá Meli YA
+       aceptó el pedido —si lo hubiera rechazado, api() habría tirado antes—,
+       así que rehacerlo es lo último que conviene. La duda se muestra en el
+       cartel de arriba, que no se va solo, y el diálogo se cierra. Los errores
+       de verdad —precio no creíble, sitio no habilitado— siguen tirando desde
+       api() y siguen abriendo el cartel rojo adentro del diálogo. */
     toast(v.titulo + ' · ' + seg + 's', v.ok ? 'ok' : 'warn');
   } catch (e) { fin(false); throw e; }
 }
