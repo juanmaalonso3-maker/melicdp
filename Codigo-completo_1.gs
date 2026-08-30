@@ -57,7 +57,7 @@ const P = PropertiesService.getScriptProperties();
  * sync tardara 15 segundos desde el editor y 33 desde la app, sin ninguna
  * pista de por qué. Ahora la app muestra las dos versiones y el desfasaje se ve.
  */
-const VERSION_BACK = '2026.08.30-34';
+const VERSION_BACK = '2026.08.30-37';
 
 /**
  * Contrato: qué sabe responder este backend.
@@ -1322,9 +1322,15 @@ function ejecutarLote(acciones) {
 
 function _mensajeError(r) {
   const b = r.body || {};
-  const clave = (b.error || '') + ' ' + (b.message || '');
+  // En minúsculas: Meli manda los códigos en MAYÚSCULAS
+  // (ERROR_CREDIBILITY_DISCOUNTED_PRICE) y las claves de acá estaban escritas
+  // en minúscula, así que la traducción más usada —la del precio no creíble—
+  // nunca llegaba a dispararse y el usuario veía el JSON crudo.
+  const clave = ((b.error || '') + ' ' + (b.message || '') + ' ' +
+                 ((b.cause && b.cause[0] && b.cause[0].error_code) || '')).toLowerCase();
   const mapa = {
-    error_credibility_price:
+    // El código real que manda Meli es ERROR_CREDIBILITY_DISCOUNTED_PRICE.
+    error_credibility_discounted_price:
       'Precio no creíble. Meli compara contra tu precio de venta de los últimos ~7 días. ' +
       'Hay que sacar las ofertas, actualizar el precio y esperar la ventana.',
     buyer_discount_not_in_range:      'El descuento debe estar entre 5% y 80%.',
@@ -1333,7 +1339,7 @@ function _mensajeError(r) {
       'Con descuento general de hasta 35%, el tramo de mejores compradores debe ser al menos 5% mayor.',
     discount_below_10_percent_difference:
       'Con descuento general mayor a 35%, el tramo de mejores compradores debe ser al menos 10% mayor.',
-    ENTITY_LOCKED: 'El ítem está bloqueado unos segundos. Reintentá.',
+    entity_locked: 'El ítem está bloqueado unos segundos. Reintentá.',
     // Cupones del vendedor
     'start_date cannot be earlier than today':
       'La fecha de inicio no puede ser anterior a hoy.',
@@ -1367,12 +1373,34 @@ function _mensajeError(r) {
       '(solo Brasil). Se borra desde el seller center.',
     // Aparece al dar de baja un ítem enseguida de haberlo sumado: la oferta
     // todavía no quedó registrada del lado de Meli.
-    'No offers found for item':
+    'no offers found for item':
       'Meli dice que esa publicación no tiene ninguna oferta de ese tipo. Si la ' +
-      'acabás de sumar, esperá unos segundos y reintentá: tarda en registrarla.'
+      'acabás de sumar, esperá unos segundos y reintentá: tarda en registrarla.',
+    // Medido sobre PRICE_MATCHING: Meli no habilita la baja por API de las
+    // campañas que arma ella misma. Contesta 403 con este texto, o 404 si se
+    // le manda el promotion_id.
+    "you must consume the correct access group":
+      'Mercado Libre no habilita esta operación para la aplicación. Pasa con las ' +
+      'campañas que arma Meli —las de "solo aceptar", como Gánale a la competencia—: ' +
+      'de esas se sale desde el seller center, no por API.'
   };
   for (var k in mapa) if (clave.indexOf(k) >= 0) return mapa[k];
-  return b.message || r.texto || ('Error ' + r.code);
+
+  // Meli a veces contesta {"message":"Errors: ","cause":[{"error_code":""}]},
+  // o sea nada. Devolver eso tal cual deja al usuario mirando "Errors:" sin
+  // información; mejor hablar por el código HTTP, que sí dice algo.
+  const limpio = String(b.message || '').replace(/^Errors:\s*$/, '').trim();
+  if (!limpio) {
+    const porCodigo = {
+      404: 'Mercado Libre no encontró esa oferta en la publicación. Puede que ya ' +
+           'no esté, o que esta campaña no se administre por esta vía.',
+      403: 'Mercado Libre no habilita esta operación para la aplicación.',
+      401: 'La autorización venció. Reintentá; si sigue, corré paso1_autorizar.',
+      429: 'Mercado Libre está frenando por exceso de llamadas. Esperá unos segundos.'
+    };
+    return porCodigo[r.code] || ('Mercado Libre respondió ' + r.code + ' sin explicar el motivo.');
+  }
+  return limpio;
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════

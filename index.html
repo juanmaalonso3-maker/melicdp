@@ -467,7 +467,7 @@ const S = {
 /* Subilo cada vez que cambie el archivo. Sirve para saber, mirando la app,
    si el navegador está sirviendo la versión nueva o una cacheada: GitHub Pages
    guarda el index.html un rato y es fácil quedarse con el viejo sin notarlo. */
-const VERSION = '2026.08.30-34';
+const VERSION = '2026.08.30-36';
 /* Qué necesita el front del backend. Subir SOLO cuando se agrega o cambia una
    acción del /exec, no en cada retoque visual. */
 const CONTRATO_MINIMO = 4;
@@ -580,6 +580,50 @@ const ACEPTAR_SOLO = ['MARKETPLACE_CAMPAIGN','SMART','PRICE_MATCHING','PRE_NEGOT
  * En el resto (co-fondeadas, DEAL, relámpago) "pending" sí es programada.
  */
 const ACUERDA_ACEPTA = ['PRE_NEGOTIATED','UNHEALTHY_STOCK'];
+
+/**
+ * De qué campañas NO se puede salir por API.
+ *
+ * Medido sobre PRICE_MATCHING el 30-ago, tres formas distintas:
+ *   con promotion_id   404 not_found
+ *   sin promotion_id   403 "User doesn't have permissions, you must consume
+ *                          the correct access group"
+ *   con offer_id       403 el mismo
+ *
+ * O sea: de las campañas que arma Mercado Libre —las de "solo aceptar"— no se
+ * sale desde acá. Ofrecer un botón "Salir" que siempre falla es peor que no
+ * ofrecerlo: hace pensar que algo se rompió, y ya vimos que eso termina en
+ * apretar tres veces.
+ *
+ * Solo se lista lo que se midió. SMART es de la misma familia y probablemente
+ * esté igual, pero no lo probé, así que no se supone: si algún día Meli
+ * contesta ese 403 para otro tipo, se agrega solo (ver aprenderSalidaBloqueada).
+ */
+const SALIDA_BLOQUEADA = {
+  PRICE_MATCHING: 'Meli no habilita salir de esta campaña por API — la arma ella y ' +
+                  'contesta "no tenés permisos". Se sale desde el seller center.'
+};
+try {
+  (JSON.parse(localStorage.getItem('cdp_salida_bloqueada') || '[]') || []).forEach(t => {
+    if (!SALIDA_BLOQUEADA[t])
+      SALIDA_BLOQUEADA[t] = 'Meli rechazó la baja de este tipo de campaña por falta de ' +
+                            'permisos cuando lo intentaste. Se sale desde el seller center.';
+  });
+} catch (e) {}
+
+/** Si Meli rechaza una baja por permisos, se anota para no volver a ofrecerla. */
+function aprenderSalidaBloqueada(tipo, mensaje) {
+  if (!tipo || SALIDA_BLOQUEADA[tipo]) return false;
+  if (!/access group|permis/i.test(String(mensaje || ''))) return false;
+  SALIDA_BLOQUEADA[tipo] = 'Meli rechazó la baja de este tipo de campaña por falta de ' +
+                           'permisos cuando lo intentaste. Se sale desde el seller center.';
+  try {
+    const y = JSON.parse(localStorage.getItem('cdp_salida_bloqueada') || '[]');
+    if (y.indexOf(tipo) < 0) { y.push(tipo);
+      localStorage.setItem('cdp_salida_bloqueada', JSON.stringify(y)); }
+  } catch (e) {}
+  return true;
+}
 
 /* ═══════════════════════════════════════════════════════════
    SALUD DE UN PRODUCTO
@@ -1459,13 +1503,21 @@ function bloquePub(p, g, esCabeza) {
     const d = diasPara(x.vence);
     const accion = sePuedeSumar(x)
       ? `<button class="btn xs" data-add="${esc(p.id)}|${esc(x.tipo)}|${esc(x.promoId)}">${x.esPropuesta?'Aceptar':'Sumar'}</button>`
-      : `<button class="btn xs danger" data-del="${esc(p.id)}|${esc(x.tipo)}|${esc(x.promoId)}">Salir</button>`;
+      : SALIDA_BLOQUEADA[x.tipo]
+        ? `<a class="btn xs" href="https://www.mercadolibre.com.ar/promociones"
+             target="_blank" rel="noopener"
+             title="${esc(SALIDA_BLOQUEADA[x.tipo])}">Salir en Meli ↗</a>`
+        : `<button class="btn xs danger" data-del="${esc(p.id)}|${esc(x.tipo)}|${esc(x.promoId)}">Salir</button>`;
     return `<tr>
       <td><span class="chip ${est[0]}" title="${esc(est[2])}">${est[1]}</span>
         <div style="font:400 9.5px 'JetBrains Mono';color:var(--ink3);margin-top:3px"
              title="Estado literal que devuelve la API">api: ${esc(x.status)}</div></td>
       <td><b style="font-size:12px">${esc(nombrePromo(x))}</b>
-        <div style="font:400 10px 'JetBrains Mono';color:var(--ink3)">${esc(x.tipo)}${x.aceptaSolo?' · solo aceptar':' · definís precio'}</div></td>
+        <div style="font:400 10px 'JetBrains Mono';color:var(--ink3)">${esc(x.tipo)}${
+          x.aceptaSolo?' · solo aceptar':' · definís precio'}</div>
+        ${!sePuedeSumar(x) && SALIDA_BLOQUEADA[x.tipo]
+          ? `<div style="font:400 10px 'JetBrains Mono';color:var(--warn);margin-top:2px"
+               title="${esc(SALIDA_BLOQUEADA[x.tipo])}">la baja va por el seller center</div>` : ''}</td>
       <td class="r n">${x.precio?pes(x.precio):'—'}
         <div style="font-size:10.5px;color:var(--ink3)">${x.promoPct!=null?'−'+pct(x.promoPct)+' de lista':''}</div>
         ${(() => {
@@ -3618,7 +3670,41 @@ async function escribir(accion, body, mensaje, boton) {
        de verdad —precio no creíble, sitio no habilitado— siguen tirando desde
        api() y siguen abriendo el cartel rojo adentro del diálogo. */
     toast(v.titulo + ' · ' + seg + 's', v.ok ? 'ok' : 'warn');
-  } catch (e) { fin(false); throw e; }
+  } catch (e) {
+    fin(false);
+    /* Un rechazo de Meli merece el mismo trato que una confirmación: cartel
+       fijo arriba, con el texto ENTERO. El toast se va solo a los nueve
+       segundos y encima se corta contra el borde de la pantalla —el error
+       llegaba a leerse "Errors:" y nada más—.
+
+       Y se vuelve a leer el registro: el backend ya anotó el rechazo con el
+       motivo, pero la copia que tiene la app es la de la última carga, así
+       que el renglón no aparecía en Registro hasta recargar a mano. */
+    const msg = String(e.message || e);
+    // Si el rechazo es por permisos, se anota el tipo: la próxima vez la app
+    // no ofrece un botón que Meli no va a cumplir.
+    const aprendido = accion === 'salir' &&
+      aprenderSalidaBloqueada(body.promotion_type, msg);
+    S.resultado = { ok: false, item: body.item_id,
+      titulo: 'Mercado Libre rechazó el pedido',
+      detalle: msg + (aprendido
+        ? ' — Lo anoté: de las campañas ' + (NOMBRE_TIPO[body.promotion_type] ||
+            body.promotion_type) + ' la app ya no va a ofrecer el botón de salir.'
+        : '') };
+    render();
+    refrescarRegistro();
+    throw e;
+  }
+}
+
+/** Relee el registro sin tocar el resto de la pantalla. */
+async function refrescarRegistro() {
+  try {
+    const d = await api('datos');
+    S.log = d.log || S.log;
+    if (S.data) S.data.log = S.log;
+    render();
+  } catch (err) { /* si falla, el registro se ve en la próxima carga */ }
 }
 
 /**
