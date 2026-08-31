@@ -469,7 +469,7 @@ const S = {
 /* Subilo cada vez que cambie el archivo. Sirve para saber, mirando la app,
    si el navegador está sirviendo la versión nueva o una cacheada: GitHub Pages
    guarda el index.html un rato y es fácil quedarse con el viejo sin notarlo. */
-const VERSION = '2026.08.30-40';
+const VERSION = '2026.08.31-41';
 /* Qué necesita el front del backend. Subir SOLO cuando se agrega o cambia una
    acción del /exec, no en cada retoque visual. */
 const CONTRATO_MINIMO = 4;
@@ -783,7 +783,28 @@ function resolverVigencia(it) {
        a las 23:59 no "queda 1 día": se cae hoy. Restar milisegundos y
        redondear para arriba daba siempre un día de más. */
     it.diasHasta = Math.max(0, Math.round((_iniDia(gana.fin) - _iniDia(new Date())) / DIA));
-    it.cubierto  = futuras.some(f => !f._sinFecha && f._ini <= gana._fin + DIA);
+
+    /* ¿Hay relevo? Acá me equivoqué feo la primera vez: miraba solo las
+       FUTURAS, y el relevo casi nunca es una futura.
+
+       En el SKU 19504, un 31 de agosto: DESCUENTAZOS manda y termina hoy,
+       SEMANA DEL DESCANSO corre hasta el 10-sept y CYBER FEST hasta el
+       14-sept. Las tres están CORRIENDO —las dos últimas tapadas, porque son
+       más caras—. Ninguna es "futura", así que el chequeo no encontraba nada
+       y cantaba "se cae hoy" sobre un producto cubierto dos semanas. Le pasó
+       a 21 de 28 productos.
+
+       Una tapada no es un problema: es la que toma la posta cuando se cae la
+       de arriba. Lo que hay que preguntar no es "¿hay alguna programada?"
+       sino "cuando esta termine, ¿queda alguna otra cubriendo el día
+       siguiente?" — sea tapada, sea futura, da igual. */
+    const relevo = comp.filter(x => x !== gana && !x._sinFecha &&
+      x._ini <= gana._fin + DIA &&    // ya empezó, o arranca sin dejar hueco
+      x._fin >  gana._fin);           // y sigue viva después de que esta muere
+    it.cubierto = relevo.length > 0;
+    // Hasta cuándo llega la cobertura encadenando lo que ya está aceptado.
+    it.cubiertoHasta = relevo.length
+      ? relevo.reduce((a,b) => b._fin > a._fin ? b : a).fin : null;
   }
   // Se queda colgada: hoy tiene oferta, se le termina pronto y no viene nada.
   it.seCae = !!(gana && it.diasHasta != null &&
