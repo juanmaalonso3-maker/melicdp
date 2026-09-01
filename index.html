@@ -466,12 +466,17 @@ const S = {
   // Cupones: null = todavía no se pidió el detalle (presupuesto, código,
   // usados). Va aparte de la sincronización porque cambia con cada venta.
   cupones:null, cuponesLeidos:0, cuponAbierto:null, cuponForm:null, soloAdentro:false,
-  tapSel:new Set()
+  // tapSel: qué campañas tapadas mirar (los chips de arriba).
+  // tapFilas: qué bajas quedaron tildadas para sacar de una. La clave es la
+  // baja en sí —publicación|tipo|promo—, no el renglón: si una publicación
+  // aparece dos veces porque tiene dos tapadas, las dos filas comparten la
+  // misma baja y se tildan juntas. Es una sola acción, no dos.
+  tapSel:new Set(), tapFilas:new Set()
 };
 /* Subilo cada vez que cambie el archivo. Sirve para saber, mirando la app,
    si el navegador está sirviendo la versión nueva o una cacheada: GitHub Pages
    guarda el index.html un rato y es fácil quedarse con el viejo sin notarlo. */
-const VERSION = '2026.09.01-45';
+const VERSION = '2026.09.01-46';
 /* Qué necesita el front del backend. Subir SOLO cuando se agrega o cambia una
    acción del /exec, no en cada retoque visual. */
 const CONTRATO_MINIMO = 4;
@@ -2109,9 +2114,20 @@ function vTapadas() {
         c.n===1?'':'es'} tapada${c.n===1?'':'s'}">${esc(c.nombre.slice(0,34))}
       <span class="b">${c.n}</span></button>`;
 
+  /* La clave de una baja: qué publicación y qué campaña se saca. Dos renglones
+     de la misma publicación tapada por cosas distintas pero cubierta por LA
+     MISMA campaña comparten clave, porque sacarla es una sola operación. */
+  const claveBaja = r => r.it.id + '|' + r.vigente.tipo + '|' + (r.vigente.promoId || '');
+  const sePuede   = r => !SALIDA_BLOQUEADA[r.vigente.tipo];
+
   const fila = r => {
     const { it, tapada, vigente, dif } = r;
+    const k = claveBaja(r);
     return `<tr>
+      <td class="c">${sePuede(r)
+        ? `<input type="checkbox" class="tapchk" data-baja="${esc(k)}"${
+            S.tapFilas.has(k) ? ' checked' : ''}>`
+        : ''}</td>
       <td class="n"><b>${esc(it.sku || '—')}</b>
         <div class="sub">${esc(it.titulo.slice(0,34))}</div></td>
       <td>${esc(cuotasPub(it))}
@@ -2140,6 +2156,21 @@ function vTapadas() {
 
   const totalDif = visibles.reduce((a,r) => a + (r.dif > 0 ? r.dif : 0), 0);
 
+  /* Lo tildado, contado por BAJA y no por renglón: es lo que se va a ejecutar.
+     Solo se cuenta lo que está a la vista — si filtrás y quedan tildadas cosas
+     de otra campaña, no se tocan sin que las veas. */
+  const accionables = visibles.filter(sePuede);
+  const bajas = new Map();                       // clave → una fila de muestra
+  accionables.forEach(r => {
+    const k = claveBaja(r);
+    if (S.tapFilas.has(k) && !bajas.has(k)) bajas.set(k, r);
+  });
+  const nElegidas = bajas.size;
+  const todasTildadas = accionables.length > 0 &&
+    accionables.every(r => S.tapFilas.has(claveBaja(r)));
+  // Lo que ganás por unidad con lo tildado, sin contar dos veces la misma baja.
+  const difElegidas = [...bajas.values()].reduce((a,r) => a + (r.dif > 0 ? r.dif : 0), 0);
+
   $('#wrap').innerHTML = `
     <div class="aviso">Una campaña <b>tapada</b> está corriendo hoy pero no se ve: hay otra en las
       mismas fechas a precio más bajo, y Meli muestra la más barata. Si sacás la de arriba, la
@@ -2160,8 +2191,19 @@ function vTapadas() {
           <b>+${pes(totalDif)}</b> por unidad sumando las ${visibles.filter(r=>r.dif>0).length} filas</span>` : ''}
     </div>
 
+    ${nElegidas ? `<div class="aviso ok" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+      <b>${nElegidas} baja${nElegidas===1?'':'s'} tildada${nElegidas===1?'':'s'}</b>
+      ${difElegidas > 0 ? `<span style="color:var(--ok)">+${pes(difElegidas)} por unidad</span>` : ''}
+      <span class="sep-flex"></span>
+      <button class="btn xs" id="tapNada">Destildar</button>
+      <button class="btn danger" id="tapLote">Sacar las ${nElegidas} de arriba</button>
+    </div>` : ''}
+
     ${visibles.length ? `<div class="panel"><div class="scroll"><table class="listado">
       <thead><tr>
+        <th class="c">${accionables.length
+          ? `<input type="checkbox" id="tapTodo"${todasTildadas ? ' checked' : ''}
+               title="Tildar las ${accionables.length} de la vista">` : ''}</th>
         <th>SKU</th><th>Condición</th>
         <th>Tapada</th><th class="r">Su precio</th>
         <th>La que tapa</th><th class="r">Su precio</th>
@@ -2185,6 +2227,83 @@ function vTapadas() {
   if (q) { let t; q.oninput = e => { clearTimeout(t);
     t = setTimeout(() => { S.q = e.target.value.trim(); render();
       const c = $('#qtap'); if (c) { c.focus(); c.selectionStart = c.value.length; } }, 250); }; }
+
+  /* Tildar de a una. No se re-dibuja toda la tabla en cada click: con 71 filas
+     eso se siente pesado y encima te mueve el scroll. Solo se refresca el
+     cartel de arriba y el tilde de "todas". */
+  $$('.tapchk').forEach(c => c.onchange = () => {
+    const k = c.dataset.baja;
+    c.checked ? S.tapFilas.add(k) : S.tapFilas.delete(k);
+    // Las filas hermanas —misma baja, otra tapada— siguen al mismo tilde.
+    $$('.tapchk').forEach(o => { if (o.dataset.baja === k) o.checked = c.checked; });
+    render();
+  });
+
+  const todo = $('#tapTodo');
+  if (todo) todo.onchange = () => {
+    accionables.forEach(r => todo.checked ? S.tapFilas.add(claveBaja(r))
+                                          : S.tapFilas.delete(claveBaja(r)));
+    render();
+  };
+  const nada = $('#tapNada');
+  if (nada) nada.onclick = () => { S.tapFilas.clear(); render(); };
+
+  /* La baja en lote. Va en UN solo pedido con la acción "lote": el backend las
+     hace de a una, en orden, con su pausa entre medio. Mandarlas por separado
+     desde acá es justo lo que se pisaba. */
+  const bl = $('#tapLote');
+  if (bl) bl.onclick = async () => {
+    const filas = [...bajas.values()];
+    const acciones = filas.map(r => {
+      const pr = r.it.promos.find(x => x.tipo === r.vigente.tipo &&
+        String(x.promoId) === String(r.vigente.promoId));
+      return { accion:'salir', item_id: r.it.id,
+               promotion_type: r.vigente.tipo,
+               promotion_id: r.vigente.promoId || undefined,
+               offer_id: (pr && pr.offerId) || undefined };
+    });
+
+    const detalle = filas.slice(0, 12).map(r =>
+      '   ' + (r.it.sku || r.it.id) + ' · ' + cuotasPub(r.it) +
+      '  →  sacar ' + nombrePromo(r.vigente) +
+      (r.dif > 0 ? '   (+' + pes(r.dif) + ')' : '')).join('\n') +
+      (filas.length > 12 ? '\n   … y ' + (filas.length - 12) + ' más' : '');
+
+    if (!confirm('Sacar ' + acciones.length + ' campaña' + (acciones.length===1?'':'s') +
+      ' que están tapando:\n\n' + detalle +
+      '\n\nAl quedar libres, las tapadas deberían tomar la posta en el acto.' +
+      '\n\nOjo: el reloj de credibilidad de 7 días arranca ahora para cada una.' +
+      '\nY si una publicación tenía más de una campaña encima, puede que siga ' +
+      'tapada por la siguiente.\n\n¿Confirmás?')) return;
+
+    const fin = ocupar(bl, 'Sacando', 'lote');
+    try {
+      const res = await enFila(() => api('lote', { acciones }));
+      const ok  = (res || []).filter(x => x.ok).length;
+      const mal = (res || []).filter(x => !x.ok);
+      const seg = fin();
+      S.resultado = {
+        ok: mal.length === 0 ? true : (ok ? null : false),
+        seg: seg,
+        titulo: mal.length === 0
+          ? ok + ' campaña' + (ok===1?'':'s') + ' sacada' + (ok===1?'':'s')
+          : ok + ' sacadas y ' + mal.length + ' rechazadas',
+        detalle: mal.length
+          ? 'Rechazadas: ' + mal.slice(0,6).map(x => x.item_id + ' (' + x.error + ')').join(' · ') +
+            (mal.length > 6 ? ' y ' + (mal.length-6) + ' más' : '') +
+            '. El detalle completo está en Registro.'
+          : 'Verificá abajo: las que estaban tapadas tendrían que haber pasado a mostrarse.'
+      };
+      S.tapFilas.clear();
+      await cargar();
+    } catch (e) {
+      fin(false);
+      S.resultado = { ok:false, titulo:'Mercado Libre rechazó el lote',
+                      detalle:String(e.message || e) };
+      render();
+      refrescarRegistro();
+    }
+  };
 
   $$('[data-destapar]').forEach(b => b.onclick = async () => {
     const [id, tipo, pid] = b.dataset.destapar.split('|');
@@ -3833,6 +3952,32 @@ $('#sOk').onclick = async () => {
    ═══════════════════════════════════════════════════════════ */
 const DURACIONES = JSON.parse(localStorage.getItem('cdp_dur') || '{}');
 
+/* ═══════════════════════════════════════════════════════════
+   UNA ESCRITURA POR VEZ
+
+   Cada "Sacar" dispara una ejecución del Apps Script que lee la publicación en
+   Meli y reescribe sus filas en la hoja, insertando o borrando renglones si la
+   cantidad de promociones cambió. Dos de esas corriendo a la vez se pisan: la
+   segunda calculó en qué renglón vivía su ítem ANTES de que la primera moviera
+   las filas, así que escribe en el lugar equivocado o falla. Encima las dos
+   compiten por el lock del token y por el mismo archivo.
+
+   Eso es lo que se rompía al ir sacando rápido una atrás de otra. La solución
+   no es prohibirlo —tener que esperar mirando es peor— sino ponerlas en fila:
+   se clickean todas y se ejecutan de a una, en orden. El botón se apaga apenas
+   lo tocás, así que se ve que quedó tomado aunque todavía no le toque.
+   ═══════════════════════════════════════════════════════════ */
+let ENVUELO = null;
+
+/** Corre fn cuando termine lo que haya en curso. Devuelve lo que devuelva fn. */
+function enFila(fn) {
+  const previa = ENVUELO || Promise.resolve();
+  // El .catch() de la anterior es a propósito: si una falla, la fila sigue.
+  const mia = previa.catch(() => {}).then(fn);
+  ENVUELO = mia.catch(() => {});
+  return mia;
+}
+
 function ocupar(el, etiqueta, clave) {
   const t0 = Date.now();
   const previo = DURACIONES[clave] || null;
@@ -3967,9 +4112,19 @@ function verificar(accion, body, filas, r) {
                     (f.precio_promo ? ' a ' + pes(+f.precio_promo) : '') + cuando + '.' };
 }
 
-/** Escribe en Meli, refresca solo lo que cambió, y comprueba que haya quedado. */
+/**
+ * Escribe en Meli, refresca solo lo que cambió, y comprueba que haya quedado.
+ *
+ * Va en fila: si ya hay una escritura en curso, esta espera su turno en vez de
+ * largarse en paralelo y pisarla. El botón se apaga apenas se toca —el
+ * cronómetro incluye la espera, que es lo que uno realmente aguarda—.
+ */
 async function escribir(accion, body, mensaje, boton) {
   const fin = ocupar(boton, accion === 'salir' ? 'Saliendo' : 'Sumando', 'escritura');
+  return enFila(() => _escribirYa(accion, body, fin));
+}
+
+async function _escribirYa(accion, body, fin) {
   try {
     const r = await api(accion, body);
     const seg = fin();
