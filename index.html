@@ -403,6 +403,7 @@ dialog::backdrop{background:rgba(10,18,16,.55)}
       <button class="nav" data-v="sku" aria-current="true">Ver un producto <span class="b" id="bS">0</span></button>
       <button class="nav" data-v="sinpromo">Sin oferta hoy <span class="b" id="bH">0</span></button>
       <button class="nav" data-v="relampago">⚡ Ofertas relámpago <span class="b" id="bR">0</span></button>
+      <button class="nav" data-v="tapadas">Campañas tapadas <span class="b" id="bTap">0</span></button>
       <button class="nav" data-v="precios">Actualizar precios</button>
       <button class="nav" data-v="mipagina">Mi página <span class="b" id="bM">0</span></button>
       <div class="nav-sep">Referencia</div>
@@ -464,12 +465,13 @@ const S = {
   preciosAbiertos:new Set(), precioEdit:{},
   // Cupones: null = todavía no se pidió el detalle (presupuesto, código,
   // usados). Va aparte de la sincronización porque cambia con cada venta.
-  cupones:null, cuponesLeidos:0, cuponAbierto:null, cuponForm:null, soloAdentro:false
+  cupones:null, cuponesLeidos:0, cuponAbierto:null, cuponForm:null, soloAdentro:false,
+  tapSel:new Set()
 };
 /* Subilo cada vez que cambie el archivo. Sirve para saber, mirando la app,
    si el navegador está sirviendo la versión nueva o una cacheada: GitHub Pages
    guarda el index.html un rato y es fácil quedarse con el viejo sin notarlo. */
-const VERSION = '2026.09.01-43';
+const VERSION = '2026.09.01-45';
 /* Qué necesita el front del backend. Subir SOLO cuando se agrega o cambia una
    acción del /exec, no en cada retoque visual. */
 const CONTRATO_MINIMO = 4;
@@ -565,7 +567,21 @@ async function api(accion, extra) {
     body: JSON.stringify(Object.assign({ accion, clave:S.key }, extra || {}))
   });
   const t = await r.text();
-  let j; try { j = JSON.parse(t); } catch(e) { throw new Error('Respuesta inesperada: ' + t.slice(0,140)); }
+  let j;
+  try { j = JSON.parse(t); }
+  catch (e) {
+    /* Cuando en vez de JSON vuelve una página de Google, no es un error de la
+       app: es que el /exec no está atendiendo. Pasa por dos motivos, y
+       conviene decir cuáles en vez de pegar el <!DOCTYPE> en pantalla. */
+    if (/^\s*<(!doctype|html)/i.test(t) || /ppConfig|accounts\.google/i.test(t))
+      throw new Error('El Apps Script devolvió una página de Google en vez de datos. ' +
+        'Suele ser una de dos: (1) la implementación quedó como "Solo yo" en vez de ' +
+        '"Cualquier usuario" —revisá Implementar → Administrar implementaciones→ editar; ' +
+        'o (2) el script perdió la autorización: abrí la URL del /exec en el navegador y, ' +
+        'si te pide permisos, dáselos. Nada de lo que hiciste se guardó a medias: el pedido ' +
+        'no llegó a ejecutarse.');
+    throw new Error('Respuesta inesperada: ' + t.slice(0,140));
+  }
   if (!j.ok) throw new Error(j.error === 'clave_invalida' ? 'Clave incorrecta' : j.error);
   return j.data;
 }
@@ -1016,8 +1032,10 @@ function _render() {
   $('#bT').textContent = S.camps.length;
   $('#bC').textContent = S.items.filter(i => i.dias != null && i.dias > 0 && i.dias < VENTANA).length;
   $('#bM').textContent = S.camps.filter(c => c.tipo === 'SELLER_COUPON_CAMPAIGN').length;
+  $('#bTap').textContent = S.items.reduce((a,i) => a + (i.vigente ? (i.tapadas||[]).length : 0), 0);
   ({listado:vListado, sku:vSku, sinpromo:vSinPromo, relampago:vRelampago, precios:vPrecios,
-    mipagina:vMiPagina, tarjetas:vCamp, credibilidad:vCred, registro:vLog})[S.vista]();
+    tapadas:vTapadas, mipagina:vMiPagina, tarjetas:vCamp, credibilidad:vCred,
+    registro:vLog})[S.vista]();
 
   // El resultado de la última escritura va arriba de todo, en todas las vistas.
   const ban = bannerResultado();
@@ -2011,11 +2029,182 @@ function vCamp() {
         <span class="chip ${dentro?'ok':'mut'}">${dentro} adentro</span>
         <span class="chip ${cand?'acc':'mut'}">${cand} disponibles</span>
       </div>
-      ${cand?`<button class="btn sm" data-camp="${esc(c.promo_id)}" style="margin-top:4px">Ver candidatos</button>`:''}
+      ${(() => {
+        // Cuántas publicaciones tienen esta campaña aceptada pero tapada.
+        const tap = S.items.reduce((a,i) => a + (i.vigente
+          ? (i.tapadas||[]).filter(x => String(x.promoId) === String(c.promo_id)).length : 0), 0);
+        return tap ? `<button class="btn sm" data-camp="${esc(c.promo_id)}" style="margin-top:4px">
+          Ver las ${tap} tapadas</button>` : '';
+      })()}
     </div>`).join('') || vacio('Sin campañas','No hay campañas abiertas.')}</div>`;
 
-  $$('[data-camp]').forEach(b => b.onclick = () => { S.campFiltro = b.dataset.camp; ir('oportunidades'); });
+  // Antes esto llevaba a "oportunidades", una vista que ya no existe: el botón
+  // rompía la app. Ahora abre las tapadas de esa campaña, que es lo accionable.
+  $$('[data-camp]').forEach(b => b.onclick = () => {
+    S.tapSel = new Set([b.dataset.camp]); S.q = ''; ir('tapadas');
+  });
 }
+
+/* ═══════════════════════════════════════════════════════════
+   TAPADAS
+   Dónde una campaña que te interesa está corriendo pero no se ve.
+
+   El problema real: te sumás a CYBER FEST, la campaña arranca, y en muchas
+   publicaciones no se ve nada — porque hay otra tarjeta corriendo en las
+   mismas fechas a un precio más bajo, y esa es la que muestra Meli. La que
+   elegiste queda TAPADA: comprometida, contando para la credibilidad, y sin
+   aparecer.
+
+   Acá se elige una o varias campañas y se listan las publicaciones donde eso
+   está pasando, con quién la tapa y a cuánto. Todas las que salen ya están
+   corriendo hoy —una tapada, por definición, es una que arranca hoy y no se
+   ve—, así que si sacás la de arriba, la de abajo toma la posta en el acto.
+
+   La columna que decide es "Diferencia": cuánto más te queda por unidad si la
+   tapada tomara la posta. Sacar la de arriba solo conviene si ese número es
+   positivo y grande; si es chico, no vale mover nada.
+   ═══════════════════════════════════════════════════════════ */
+function vTapadas() {
+  $('#tit').textContent = 'Campañas tapadas';
+
+  /* Un renglón por (publicación, campaña tapada). Una misma publicación puede
+     tener varias tapadas y aparecer más de una vez: son decisiones distintas. */
+  const todas = [];
+  S.items.forEach(it => {
+    if (!it.vigente) return;                   // sin nadie arriba no hay tapada
+    (it.tapadas || []).forEach(t => {
+      const pRec = neto(it, t.precio), vRec = neto(it, it.vigente.precio);
+      todas.push({
+        it, tapada: t, vigente: it.vigente,
+        // Lo que ganarías por unidad si esta tomara la posta.
+        dif: (pRec != null && vRec != null) ? pRec - vRec : null
+      });
+    });
+  });
+
+  // Las campañas que hoy tienen al menos una publicación tapada.
+  const porCamp = new Map();
+  todas.forEach(r => {
+    const k = r.tapada.promoId || r.tapada.tipo;
+    if (!porCamp.has(k)) porCamp.set(k, {
+      id: k, nombre: nombrePromo(r.tapada), tipo: r.tapada.tipo, n: 0, dif: 0 });
+    const c = porCamp.get(k);
+    c.n++;
+    if (r.dif != null) c.dif += r.dif;
+  });
+  const camps = [...porCamp.values()].sort((a,b) => b.n - a.n);
+
+  const sel = S.tapSel;                        // Set de ids elegidos
+  const elegidas = sel.size ? todas.filter(r =>
+    sel.has(r.tapada.promoId || r.tapada.tipo)) : todas;
+
+  const visibles = elegidas
+    .filter(r => !S.q || (r.it.sku + ' ' + r.it.titulo).toLowerCase().includes(S.q.toLowerCase()))
+    .sort((a,b) => (b.dif ?? -Infinity) - (a.dif ?? -Infinity));
+
+  // Dos campañas pueden llamarse igual y ser distintas: el id va en el tooltip
+  // para poder distinguirlas sin adivinar.
+  const chip = c => `<button class="tab${sel.has(c.id)?' on':''}" data-tap="${esc(c.id)}"
+      title="${esc(nombreTipoLargo(c.tipo))} · ${esc(c.id)} · ${c.n} publicación${
+        c.n===1?'':'es'} tapada${c.n===1?'':'s'}">${esc(c.nombre.slice(0,34))}
+      <span class="b">${c.n}</span></button>`;
+
+  const fila = r => {
+    const { it, tapada, vigente, dif } = r;
+    return `<tr>
+      <td class="n"><b>${esc(it.sku || '—')}</b>
+        <div class="sub">${esc(it.titulo.slice(0,34))}</div></td>
+      <td>${esc(cuotasPub(it))}
+        <div class="sub">${esc(it.id)}${it.catalogo?' · catálogo':''}</div></td>
+      <td><b style="font-size:12px">${esc(nombrePromo(tapada))}</b>
+        <div class="sub">${esc(tapada.tipo)} · ${vigenciaTexto(tapada)}</div></td>
+      <td class="r n">${pes(tapada.precio)}
+        <div class="sub">${(() => { const v = neto(it, tapada.precio);
+          return v == null ? '' : 'recibís ' + pes(v); })()}</div></td>
+      <td><b style="font-size:12px">${esc(nombrePromo(vigente))}</b>
+        <div class="sub">${esc(vigente.tipo)} · ${vigenciaTexto(vigente)}</div></td>
+      <td class="r n">${pes(vigente.precio)}
+        <div class="sub">${(() => { const v = neto(it, vigente.precio);
+          return v == null ? '' : 'recibís ' + pes(v); })()}</div></td>
+      <td class="r n">${dif == null ? '—'
+        : `<b style="color:${dif > 0 ? 'var(--ok)' : 'var(--ink3)'}">${
+            (dif > 0 ? '+' : '') + pes(dif)}</b>`}</td>
+      <td class="r">${SALIDA_BLOQUEADA[vigente.tipo]
+        ? `<a class="btn xs" href="${esc(linkPromos(it.sku || it.id))}" target="_blank"
+             rel="noopener" title="${esc(SALIDA_BLOQUEADA[vigente.tipo])}">Sacar en Meli ↗</a>`
+        : `<button class="btn xs danger"
+             data-destapar="${esc(it.id)}|${esc(vigente.tipo)}|${esc(vigente.promoId)}"
+             title="Saca ${esc(nombrePromo(vigente))} de esta publicación. Al quedar libre, ${esc(nombrePromo(tapada))} pasa a mostrarse.">Sacar la de arriba</button>`}</td>
+    </tr>`;
+  };
+
+  const totalDif = visibles.reduce((a,r) => a + (r.dif > 0 ? r.dif : 0), 0);
+
+  $('#wrap').innerHTML = `
+    <div class="aviso">Una campaña <b>tapada</b> está corriendo hoy pero no se ve: hay otra en las
+      mismas fechas a precio más bajo, y Meli muestra la más barata. Si sacás la de arriba, la
+      tapada toma la posta en el acto —ya está aceptada y vigente—.
+      <br><br>La columna <b>Diferencia</b> es lo que te queda de más por unidad si eso pasa.
+      Solo conviene mover si el número es positivo y te compensa perder la otra campaña.</div>
+
+    ${camps.length ? `<div class="tabs">
+      ${camps.map(chip).join('')}
+      ${sel.size ? `<button class="tab" id="tapTodas">ver todas</button>` : ''}
+    </div>` : ''}
+
+    <div class="buscador">
+      <input type="text" id="qtap" placeholder="Buscar por nombre o SKU" value="${esc(S.q)}" autocomplete="off">
+      <span style="color:var(--ink3);font-size:12px">${visibles.length} de ${todas.length}</span>
+      ${totalDif > 0 ? `<span class="sep-flex"></span>
+        <span style="font-size:12px;color:var(--ok)">Destapando todo lo positivo:
+          <b>+${pes(totalDif)}</b> por unidad sumando las ${visibles.filter(r=>r.dif>0).length} filas</span>` : ''}
+    </div>
+
+    ${visibles.length ? `<div class="panel"><div class="scroll"><table class="listado">
+      <thead><tr>
+        <th>SKU</th><th>Condición</th>
+        <th>Tapada</th><th class="r">Su precio</th>
+        <th>La que tapa</th><th class="r">Su precio</th>
+        <th class="r">Diferencia</th><th></th>
+      </tr></thead>
+      <tbody>${visibles.map(fila).join('')}</tbody>
+    </table></div></div>`
+    : vacio('Nada tapado',
+        todas.length ? 'Ninguna publicación coincide con el filtro.'
+          : 'Ninguna campaña que tengas aceptada está siendo tapada por otra. Todo lo que aceptaste se está viendo.')}`;
+
+  $$('[data-tap]').forEach(b => b.onclick = () => {
+    const k = b.dataset.tap;
+    sel.has(k) ? sel.delete(k) : sel.add(k);
+    render();
+  });
+  const vt = $('#tapTodas');
+  if (vt) vt.onclick = () => { sel.clear(); render(); };
+
+  const q = $('#qtap');
+  if (q) { let t; q.oninput = e => { clearTimeout(t);
+    t = setTimeout(() => { S.q = e.target.value.trim(); render();
+      const c = $('#qtap'); if (c) { c.focus(); c.selectionStart = c.value.length; } }, 250); }; }
+
+  $$('[data-destapar]').forEach(b => b.onclick = async () => {
+    const [id, tipo, pid] = b.dataset.destapar.split('|');
+    const it = S.items.find(x => x.id === id);
+    const pr = it && it.promos.find(x => x.tipo === tipo && String(x.promoId) === String(pid));
+    const tap = it && (it.tapadas || [])[0];
+    if (!confirm('Sacar ' + (pr ? nombrePromo(pr) : tipo) + ' de ' + (it ? it.sku : id) + '.\n\n' +
+      (tap ? 'Al quedar libre debería tomar la posta ' + nombrePromo(tap) +
+             ' a ' + pes(tap.precio) + '.\n\n' : '') +
+      'Ojo: el reloj de credibilidad de 7 días arranca recién ahora.\n\n¿Confirmás?')) return;
+    try {
+      await escribir('salir', { item_id:id, promotion_type:tipo, promotion_id:pid||undefined,
+                                offer_id:(pr && pr.offerId) || undefined },
+                     'Salió de ' + tipo, b);
+    } catch (e) { /* el cartel de arriba ya lo explica */ }
+  });
+}
+
+/** El tipo de campaña en palabras, para los tooltips. */
+const nombreTipoLargo = t => NOMBRE_TIPO[t] || t || '—';
 
 /* ═══════════════════════════════════════════════════════════
    OFERTAS RELÁMPAGO

@@ -20,12 +20,34 @@
  * exacta ("2026-08-31T00:00:00" a "2026-08-31T11:59:59"). Ahora se pide y se
  * completa. Ver 5.4b.
  *
- * DESPUÉS DE PEGAR:
+ * EL TOKEN QUE SE VENCÍA (01-sep-2026): la cadena del refresh_token se cortaba
+ * cada tanto y había que volver a autorizar a mano. Eran dos cosas, las dos
+ * arregladas acá: el trigger renovaba sin tomar el lock (chocaba con la app y
+ * uno de los dos se comía un invalid_grant) y renovaba siempre, aunque al token
+ * le quedaran horas. Ahora hay un solo camino, con lock, que renueva solo si
+ * hace falta, y guarda el refresh anterior como respaldo. Ver la sección de
+ * TOKENS y la función estadoToken().
+ *
+ * SIN refresh_token (01-sep-2026, medido): el canje devolvía un access_token y
+ * nada más, y _guardarTokens escribía ese vacío ENCIMA del refresh_token bueno.
+ * O sea que una autorización fallida rompía la cadena que andaba. Ahora el
+ * refresh_token solo se escribe si vino de verdad, y el link de autorización
+ * pide scope=offline_access explícitamente, que es lo que Meli necesita para
+ * devolver la cadena.
+ *
+ * DESPUÉS DE PEGAR — EL ORDEN IMPORTA:
  *   1. Guardá (Ctrl+S)
- *   2. Ejecutá  diagnostico   → tiene que loguear tu user_id y /users/me
- *   3. Ejecutá  sincronizarTodo
- *   4. Ejecutá  instalarTriggers   (una sola vez)
- *   5. Implementar → Administrar implementaciones → lápiz → Versión nueva
+ *   2. Implementar → Administrar implementaciones → lápiz → Versión nueva
+ *      ↑ ESTO ANTES DE AUTORIZAR. Meli vuelve al /exec, y el /exec corre la
+ *        última versión IMPLEMENTADA, no la que ves en el editor.
+ *   3. Ejecutá  instalarTriggers   ← CORRELO DE NUEVO, cambió el del token
+ *   4. Ejecutá  paso1_autorizar    y aprobá el link con KENTAOFICIAL
+ *   5. Ejecutá  estadoToken        → tiene que decir "refresh_token: guardado"
+ *
+ * SI EL PASO 5 FALLA:
+ *   · revisarPermisos()  → le pregunta a Meli qué scopes tiene la app
+ *   · revocarPermiso()   → borra el permiso vigente para forzar uno nuevo
+ *                          (desconecta la app: seguí YA con paso1_autorizar)
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
@@ -57,7 +79,7 @@ const P = PropertiesService.getScriptProperties();
  * sync tardara 15 segundos desde el editor y 33 desde la app, sin ninguna
  * pista de por qué. Ahora la app muestra las dos versiones y el desfasaje se ve.
  */
-const VERSION_BACK = '2026.09.01-42';
+const VERSION_BACK = '2026.09.01-50';
 
 /**
  * Contrato: qué sabe responder este backend.
@@ -75,15 +97,46 @@ const CONTRATO = 4;
    2 · AUTORIZACIÓN
    ═══════════════════════════════════════════════════════════════════════════ */
 
+/**
+ * El link para autorizar.
+ *
+ * DOS COSAS ANTES DE CORRERLO:
+ *
+ *   · Publicá la versión nueva. Meli te devuelve al /exec, y el /exec corre la
+ *     última versión IMPLEMENTADA, no la del editor. Si autorizás sin publicar,
+ *     el canje lo hace el código viejo y el arreglo no participa.
+ *
+ *   · Aprobá con la cuenta ADMINISTRADORA (KENTAOFICIAL). Con un colaborador
+ *     el permiso no vale y Meli devuelve invalid_operator_user_id.
+ *
+ * El link lleva scope=offline_access read write. Eso está documentado: la
+ * referencia de errores de Meli dice que los valores permitidos del parámetro
+ * son exactamente "offline_access", "write" y "read". Pedirlo explícitamente
+ * es lo que hace que el canje devuelva refresh_token; sin él, Meli concede lo
+ * que la aplicación tenga configurado y nada más.
+ */
 function paso1_autorizar() {
   const state = Utilities.getUuid();
   P.setProperty('ML_OAUTH_STATE', state);
-  const url = ML.AUTH_HOST + '/authorization?response_type=code'
+  const base = ML.AUTH_HOST + '/authorization?response_type=code'
     + '&client_id='    + encodeURIComponent(ML.CLIENT_ID)
     + '&redirect_uri=' + encodeURIComponent(ML.REDIRECT_URI)
     + '&state='        + encodeURIComponent(state);
-  Logger.log('\nABRÍ ESTE LINK Y APROBÁ CON KENTAOFICIAL (cuenta principal):\n\n' + url + '\n');
-  return url;
+  const conScope = base + '&scope=' + encodeURIComponent('offline_access read write');
+
+  Logger.log('\nABRÍ ESTE LINK Y APROBÁ CON KENTAOFICIAL (cuenta principal):\n');
+  Logger.log(conScope);
+  Logger.log('\nDespués corré  estadoToken.  Tiene que decir "refresh_token: guardado".');
+  Logger.log('');
+  Logger.log('Si Meli rechaza el link de arriba, el error dice qué pasa:');
+  Logger.log('  · invalid_scope       → el parámetro está mal escrito, avisame.');
+  Logger.log('  · unauthorized_client → la aplicación no tiene habilitado el');
+  Logger.log('    flujo. devcenter → tu app → Editar → Configuración y scopes →');
+  Logger.log('    Flujos Oauth → tildá "Refresh Token" → GUARDAR (no "Volver").');
+  Logger.log('');
+  Logger.log('Y este es el link sin el scope, por si querés comparar:');
+  Logger.log(base);
+  return conScope;
 }
 
 function _canjearCode(code) {
@@ -103,14 +156,82 @@ function _canjearCode(code) {
   return b;
 }
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   LOS TOKENS
+   El refresh_token de Meli es de UN SOLO USO: cada vez que lo usás, Meli te
+   devuelve uno nuevo y mata el anterior. Es una cadena — si se corta un
+   eslabón, no hay forma de recuperarla salvo autorizar a mano de nuevo.
+
+   Había dos formas de cortarla, y por eso se vencía cada tanto:
+
+     1. refrescarTokenProgramado() llamaba a _refrescar() SIN tomar el lock.
+        Si el trigger caía junto con una llamada de la app, los dos pedían el
+        refresh con el MISMO token: uno ganaba y el otro se comía un
+        invalid_grant.
+
+     2. Ese trigger refrescaba SIEMPRE, aunque al token le quedaran horas de
+        vida. Cada refresh de más es una rotación de más, y otra chance de que
+        la ejecución muera entre que Meli rota y el script guarda —ahí Meli
+        queda con el nuevo, el script con el viejo, y se acabó—.
+
+   Lo que se hace ahora:
+     · Un solo camino para refrescar, siempre con el lock tomado.
+     · Se refresca solo si al token le queda menos de MARGEN_REFRESH.
+     · El token nuevo se guarda ANTES de devolverlo, y el anterior queda como
+       respaldo: si un refresh falla con invalid_grant, se reintenta una vez
+       con el respaldo. Eso rescata justo el caso de "Meli rotó y nosotros no
+       llegamos a anotarlo".
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Si al access_token le queda menos que esto, se renueva. Dura 6 h; con dos
+   horas de colchón el trigger de cada 2 h lo mantiene vivo sin rotar de más:
+   pasa a mirarlo tres veces por vida y renueva solo en la última. */
+const MARGEN_REFRESH = 2 * 60 * 60 * 1000;
+
+/**
+ * Guarda lo que devolvió Meli.
+ *
+ * OJO con el refresh_token: antes se guardaba SIEMPRE, viniera o no. Si Meli
+ * contestaba sin él —y contesta sin él cuando la aplicación no tiene
+ * offline_access— se pisaba el que había con una cadena vacía. Es decir: una
+ * autorización fallida destruía la cadena que funcionaba. Eso explica el
+ * "ML_REFRESH_TOKEN = (vacío)" del 01-sep.
+ *
+ * Ahora solo se escribe si de verdad vino uno, y si no vino queda anotado en el
+ * log y en ML_SIN_REFRESH para que estadoToken lo pueda decir.
+ */
 function _guardarTokens(t) {
-  // El refresh_token es de UN SOLO USO: guardar el nuevo siempre, en la misma corrida.
-  P.setProperties({
+  const previo = P.getProperty('ML_REFRESH_TOKEN');
+  const props = {
     ML_ACCESS_TOKEN:  t.access_token,
-    ML_REFRESH_TOKEN: t.refresh_token,
     ML_USER_ID:       String(t.user_id),
-    ML_EXPIRA_EN:     String(Date.now() + (t.expires_in - 600) * 1000)
-  }, false);
+    // Si Meli no manda expires_in, 6 h es lo que dura siempre en la práctica.
+    ML_EXPIRA_EN:     String(Date.now() + ((t.expires_in || 21600) - 600) * 1000),
+    ML_TOKEN_FECHA:   new Date().toISOString()
+  };
+
+  if (t.refresh_token) {
+    props.ML_REFRESH_TOKEN = t.refresh_token;
+    props.ML_SIN_REFRESH   = '';
+    // El anterior se guarda como respaldo: es el único salvavidas si alguna vez
+    // Meli rota y nosotros no llegamos a anotar el nuevo.
+    if (previo && previo !== t.refresh_token) props.ML_REFRESH_PREV = previo;
+  } else {
+    props.ML_SIN_REFRESH = new Date().toISOString();
+    Logger.log('OJO: Meli contestó SIN refresh_token. Las claves que mandó: ' +
+               Object.keys(t || {}).join(', ') + '. Casi siempre es que la ' +
+               'aplicación no tiene offline_access habilitado en devcenter. ' +
+               'No piso el refresh_token que ya estaba.');
+  }
+
+  /* Qué contestó Meli, para no tener que adivinar la próxima vez. El canje
+     corre en el /exec y su Logger no se ve desde el editor, así que el dato
+     se guarda acá y estadoToken lo muestra. Nunca el token: solo el scope
+     concedido y los nombres de los campos. */
+  props.ML_ULTIMO_SCOPE   = String(t.scope || '(Meli no mandó scope)');
+  props.ML_ULTIMAS_CLAVES = Object.keys(t || {}).join(', ');
+
+  P.setProperties(props, false);
 }
 
 function getToken() {
@@ -118,34 +239,243 @@ function getToken() {
   lock.waitLock(30000);
   try {
     const tok = P.getProperty('ML_ACCESS_TOKEN');
-    if (tok && Date.now() < Number(P.getProperty('ML_EXPIRA_EN') || 0)) return tok;
+    const vence = Number(P.getProperty('ML_EXPIRA_EN') || 0);
+    if (tok && Date.now() < vence) return tok;
     return _refrescar();
   } finally { lock.releaseLock(); }
 }
 
+/**
+ * Renueva el token. OJO: asume que quien llama YA tiene el lock tomado.
+ * No lo tomes acá adentro: getToken lo tiene y Apps Script no reentra.
+ */
 function _refrescar() {
   const rt = P.getProperty('ML_REFRESH_TOKEN');
   if (!rt) throw new Error('No hay refresh_token. Corré paso1_autorizar.');
+
+  var res = _pedirRefresh(rt);
+  if (!res.ok) {
+    /* invalid_grant quiere decir que ese refresh_token ya se usó. Casi siempre
+       es porque Meli rotó y la ejecución anterior no llegó a guardar el nuevo.
+       El respaldo es el que estaba antes; si el que falló es el nuevo, el
+       viejo no sirve, pero si el que falló era el viejo —porque se guardó a
+       medias— el respaldo puede ser el bueno. Cuesta una llamada probarlo y
+       ahorra tener que reautorizar a mano. */
+    const prev = P.getProperty('ML_REFRESH_PREV');
+    if (prev && prev !== rt && /invalid_grant/i.test(res.texto)) {
+      Logger.log('refresh: invalid_grant con el token actual, pruebo el respaldo');
+      res = _pedirRefresh(prev);
+    }
+  }
+  if (!res.ok)
+    throw new Error('refresh ' + res.code + ' — ' + res.motivo +
+      ' · si dice invalid_grant, la cadena se cortó: corré paso1_autorizar de nuevo.');
+
+  _guardarTokens(res.body);
+  return res.body.access_token;
+}
+
+/** Una llamada de refresh, sin decidir nada. */
+function _pedirRefresh(refreshToken) {
   const r = UrlFetchApp.fetch(ML.API_HOST + '/oauth/token', {
     method: 'post', contentType: 'application/x-www-form-urlencoded',
     headers: { accept: 'application/json' },
     payload: {
       grant_type: 'refresh_token', client_id: ML.CLIENT_ID,
-      client_secret: ML.CLIENT_SECRET, refresh_token: rt
+      client_secret: ML.CLIENT_SECRET, refresh_token: refreshToken
     },
     muteHttpExceptions: true
   });
-  const b = JSON.parse(r.getContentText());
-  if (r.getResponseCode() !== 200)
-    throw new Error('refresh ' + r.getResponseCode() + ' — ' + (b.error_description || r.getContentText()) +
-                    ' · si dice invalid_grant, corré paso1_autorizar de nuevo.');
-  _guardarTokens(b);
-  return b.access_token;
+  const texto = r.getContentText();
+  var body = null; try { body = JSON.parse(texto); } catch (e) {}
+  return {
+    ok: r.getResponseCode() === 200 && body && body.access_token,
+    code: r.getResponseCode(), texto: texto, body: body,
+    motivo: (body && (body.error_description || body.error)) || texto.slice(0, 200)
+  };
 }
 
+/**
+ * El trigger que vigila el token.
+ *
+ * Toma el lock —antes no lo hacía, y ese era el choque— y solo renueva si al
+ * token de verdad le queda poco. Renovar uno sano no sirve de nada y suma
+ * rotaciones que pueden romper la cadena.
+ */
 function refrescarTokenProgramado() {
-  try { _refrescar(); Logger.log('Token refrescado OK'); }
-  catch (e) { Logger.log('FALLÓ refresh: ' + e); }
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(30000)) { Logger.log('token: hay otra ejecución, no toco nada'); return; }
+  try {
+    const vence = Number(P.getProperty('ML_EXPIRA_EN') || 0);
+    const queda = vence - Date.now();
+    if (queda > MARGEN_REFRESH) {
+      Logger.log('token: le quedan ' + Math.round(queda / 60000) + ' min, no hace falta renovar');
+      return;
+    }
+    _refrescar();
+    Logger.log('token: renovado, vence en ' +
+               Math.round((Number(P.getProperty('ML_EXPIRA_EN')) - Date.now()) / 60000) + ' min');
+  } catch (e) { Logger.log('token: FALLÓ la renovación — ' + e); }
+  finally { lock.releaseLock(); }
+}
+
+/**
+ * Cómo está la conexión con Meli. No escribe nada, no rota nada.
+ * Corré esto cuando dudes, en vez de reautorizar por las dudas.
+ */
+function estadoToken() {
+  const vence = Number(P.getProperty('ML_EXPIRA_EN') || 0);
+  const queda = vence - Date.now();
+  Logger.log('user_id           : ' + (P.getProperty('ML_USER_ID') || '(sin autorizar)'));
+  Logger.log('access_token      : ' + (P.getProperty('ML_ACCESS_TOKEN') ? 'guardado' : 'NO HAY'));
+  Logger.log('vence             : ' + (vence ? new Date(vence).toLocaleString('es-AR') : '—'));
+  Logger.log('le queda          : ' + (queda > 0 ? Math.round(queda / 60000) + ' min' : 'VENCIDO'));
+  Logger.log('refresh_token     : ' + (P.getProperty('ML_REFRESH_TOKEN') ? 'guardado' : 'NO HAY'));
+  Logger.log('respaldo          : ' + (P.getProperty('ML_REFRESH_PREV') ? 'guardado' : 'todavía no hay'));
+  Logger.log('última renovación : ' + (P.getProperty('ML_TOKEN_FECHA') || '—'));
+
+  Logger.log('scope concedido   : ' + (P.getProperty('ML_ULTIMO_SCOPE') || '(sin registrar)'));
+
+  const sinRt = P.getProperty('ML_SIN_REFRESH');
+  if (sinRt && !P.getProperty('ML_REFRESH_TOKEN')) {
+    Logger.log('');
+    Logger.log('✗ SIN CADENA. La última autorización (' + sinRt + ') volvió sin');
+    Logger.log('  refresh_token. Este access_token se muere cuando venza y hay que');
+    Logger.log('  autorizar a mano de nuevo. Se arregla en devcenter, no acá:');
+    Logger.log('  developers.mercadolibre.com.ar → tu aplicación → que tenga');
+    Logger.log('  offline_access entre los permisos → y volver a autorizar.');
+  }
+  Logger.log('\nSe renueva sola cuando le quedan menos de ' +
+             (MARGEN_REFRESH / 3600000) + ' h. Si acá dice VENCIDO y aun así la app anda,');
+  Logger.log('es porque se renovó en la primera llamada: es lo esperado.');
+  var t = null;
+  try { t = getToken(); } catch (e) { Logger.log('\n✗ No pude obtener token: ' + e); return; }
+  Logger.log('\n✔ Token vivo. Probando una llamada real...');
+  try { Logger.log('  /users/me → ' + (mlGet('/users/me').nickname || 'ok')); }
+  catch (e) { Logger.log('  ✗ la llamada falló: ' + e); }
+}
+
+/**
+ * Qué permisos le diste realmente a la aplicación.
+ *
+ * Le pregunta a Meli, no a la pantalla de devcenter: es la única forma de
+ * saber si el tilde de "Refresh Token" quedó guardado o no. No escribe nada.
+ */
+function revisarPermisos() {
+  const uid = P.getProperty('ML_USER_ID');
+  const at  = P.getProperty('ML_ACCESS_TOKEN');
+  if (!uid || !at) { Logger.log('Sin token guardado. Corré paso1_autorizar.'); return; }
+
+  const pedir = function (ruta) {
+    try {
+      const r = UrlFetchApp.fetch(ML.API_HOST + ruta, {
+        headers: { Authorization: 'Bearer ' + at, accept: 'application/json' },
+        muteHttpExceptions: true });
+      return { code: r.getResponseCode(), texto: r.getContentText() };
+    } catch (e) { return { code: 0, texto: String(e) }; }
+  };
+
+  Logger.log('══════════ EL PERMISO QUE LE DISTE A LA APP ══════════');
+  const g = pedir('/users/' + uid + '/applications/' + ML.CLIENT_ID);
+  Logger.log('  ' + g.code + ' · ' + g.texto.slice(0, 900));
+  var grant = null; try { grant = JSON.parse(g.texto); } catch (e) {}
+
+  const scopes = (grant && grant.scopes) || [];
+  const offline = /offline_access/i.test(JSON.stringify(scopes));
+  Logger.log('\n  creado el : ' + ((grant && grant.date_created) || '—'));
+  Logger.log('  scopes    : ' + scopes.length);
+  Logger.log('  OFFLINE   : ' + (offline ? '✔ SÍ' : '✗ NO — es lo que falta'));
+
+  // La doc avisa: las apps tienen que estar separadas entre Mercado Libre y
+  // Mercado Pago. Si hay scopes urn:mp: hay que ajustarlos en el devcenter de
+  // Mercado Pago o se pierde el acceso a las APIs de Meli.
+  const mp = scopes.filter(function (s) { return /^urn:mp:/i.test(String(s)); });
+  Logger.log('  scopes de Mercado Pago: ' + (mp.length ? '⚠ ' + mp.join(', ') : 'ninguno (bien)'));
+
+  Logger.log('\n══════════ LA FICHA DE LA APLICACIÓN ══════════');
+  const a = pedir('/applications/' + ML.CLIENT_ID);
+  var app = null; try { app = JSON.parse(a.texto); } catch (e) {}
+
+  /* allow_flow es EL campo. Son las casillas de "Flujos Oauth" en devcenter,
+     tal cual: authorization_code, client_credentials, refresh_token. Si
+     refresh_token no está en esta lista, Meli no va a mandar la cadena por más
+     que se la pidas en el link — no es el permiso del usuario, es lo que la
+     aplicación tiene permitido pedir. */
+  const flujos = (app && app.allow_flow) || [];
+  const puedeRefresh = flujos.indexOf('refresh_token') >= 0;
+  Logger.log('  Flujos Oauth habilitados : ' + (flujos.join(', ') || '(no se pudo leer)'));
+  Logger.log('  ¿incluye refresh_token?  : ' + (puedeRefresh ? '✔ SÍ' : '✗ NO — es esto'));
+  Logger.log('  PKCE                     : ' + ((app && app.use_pkce) ? '⚠ activado' : 'no (bien)'));
+  Logger.log('  última vez que se guardó : ' +
+    ((app && app.traceability_updated && app.traceability_updated.date) || '—'));
+  Logger.log('  (si esa fecha no es de hoy, el cambio en devcenter no se guardó)');
+
+  Logger.log('\n  ── la ficha cruda ──');
+  for (var i = 0; i < a.texto.length && i < 2000; i += 450)
+    Logger.log('  │ ' + a.texto.slice(i, i + 450));
+
+  Logger.log('\n══════════ EL ÚLTIMO CANJE ══════════');
+  Logger.log('  scope concedido : ' + (P.getProperty('ML_ULTIMO_SCOPE') || '(sin registrar)'));
+  Logger.log('  campos devueltos: ' + (P.getProperty('ML_ULTIMAS_CLAVES') || '(sin registrar)'));
+
+  Logger.log('\n══════════ QUÉ HACER ══════════');
+  if (offline) {
+    Logger.log('  ►► Está todo bien. La cadena se mantiene sola.');
+  } else if (!puedeRefresh) {
+    Logger.log('  ►► La aplicación NO tiene habilitado el flujo refresh_token.');
+    Logger.log('     Autorizar de nuevo no sirve de nada hasta arreglar esto:');
+    Logger.log('');
+    Logger.log('     developers.mercadolibre.com.ar → tu aplicación → Editar →');
+    Logger.log('     "Configuración y scopes" → Flujos Oauth → tildá');
+    Logger.log('     "Refresh Token" → BAJÁ HASTA EL FINAL Y GUARDÁ.');
+    Logger.log('     El botón "Volver" de arriba NO guarda: sale sin aplicar.');
+    Logger.log('');
+    Logger.log('     Después volvé a correr revisarPermisos(): la lista de');
+    Logger.log('     flujos tiene que decir tres, y la fecha de guardado, hoy.');
+  } else {
+    Logger.log('  ►► La aplicación ya puede pedir el refresh, pero el permiso');
+    Logger.log('     que tenés concedido es viejo y no lo incluye. Corré:');
+    Logger.log('       1. revocarPermiso()   (desconecta la app)');
+    Logger.log('       2. paso1_autorizar    (seguí en el momento)');
+    Logger.log('       3. estadoToken');
+  }
+}
+
+/**
+ * Borra el permiso que tu cuenta le dio a la aplicación.
+ *
+ * ⚠ Esto DESCONECTA la app: el token actual deja de servir y la página web va
+ * a tirar error hasta que autorices de nuevo. No se pierde nada más —ni
+ * publicaciones, ni promociones, ni la planilla—, pero seguí con
+ * paso1_autorizar en el momento, no lo dejes para después.
+ *
+ * Para qué sirve: mientras haya un permiso vigente, Meli no vuelve a
+ * preguntar nada y reusa el que ya diste, con los scopes que tenía. Borrarlo
+ * es lo que lo obliga a armar uno nuevo.
+ */
+function revocarPermiso() {
+  const uid = P.getProperty('ML_USER_ID');
+  if (!uid) { Logger.log('No hay user_id guardado. Corré paso1_autorizar.'); return; }
+
+  const ruta = '/users/' + uid + '/applications/' + ML.CLIENT_ID;
+  Logger.log('DELETE ' + ruta);
+  const r = _mlEscribir('delete', ruta, null);
+  Logger.log('  ' + r.code + ' · ' + String(r.texto || '(vacía)').slice(0, 200));
+
+  if (!r.ok) {
+    Logger.log('\n✗ Meli no lo aceptó: ' + _mensajeError(r));
+    Logger.log('  A mano: mercadolibre.com.ar → Mi cuenta → Seguridad →');
+    Logger.log('  aplicaciones conectadas → tu app → quitar permiso.');
+    return;
+  }
+
+  // El token viejo muere con el permiso: se limpia para no dejar basura que
+  // después confunda al diagnóstico.
+  P.setProperties({ ML_ACCESS_TOKEN: '', ML_EXPIRA_EN: '0',
+                    ML_REFRESH_TOKEN: '', ML_REFRESH_PREV: '' }, false);
+
+  Logger.log('\n✔ Permiso borrado. La app está desconectada.');
+  Logger.log('  SEGUÍ YA con paso1_autorizar y después estadoToken.');
 }
 
 
@@ -338,7 +668,15 @@ function doGet(e) {
       if (!esp || q.state !== esp) return _pag('State inválido', 'Corré paso1_autorizar de nuevo.');
       const t = _canjearCode(q.code);
       P.deleteProperty('ML_OAUTH_STATE');
-      return _pag('Conectado', 'Tokens guardados para el usuario ' + t.user_id + '.');
+      // Que el cartel diga la verdad: sin refresh_token esto dura 6 horas y
+      // vuelve a caerse. Antes decía "Conectado" igual y no te enterabas.
+      if (!t.refresh_token) return _pag('Conectado, pero a medias',
+        'El token quedó guardado para el usuario ' + t.user_id + ', pero Meli ' +
+        'no mandó refresh_token: en unas 6 horas hay que autorizar de nuevo. ' +
+        'Se arregla habilitando <b>offline_access</b> en la aplicación, en ' +
+        'developers.mercadolibre.com.ar, y volviendo a autorizar.');
+      return _pag('Conectado', 'Tokens guardados para el usuario ' + t.user_id +
+        '. La renovación automática queda andando.');
     } catch (err) { return _pag('Falló el canje', String(err)); }
   }
   if (q.error) return _pag(q.error, q.error_description || '');
@@ -732,7 +1070,12 @@ function sincronizarTodo() {
         // Costos, para el "Recibís" del front
         cc.pct  != null ? cc.pct  : '',
         cc.fijo != null ? cc.fijo : '',
-        m.envio != null ? m.envio : ''
+        m.envio != null ? m.envio : '',
+        // El id de la oferta, última columna. Agregué la columna a la cabecera
+        // y me olvidé de agregarle el valor acá: la fila quedó con 34 valores
+        // contra 35 títulos, setValues tiró error, y como _volcarHoja limpiaba
+        // ANTES de escribir, la hoja quedó vacía. Ver la nota en _volcarHoja.
+        p.ref_id || p.offer_id || ''
       ]);
     });
   });
@@ -1436,6 +1779,13 @@ function _mensajeError(r) {
       '(solo Brasil). Se borra desde el seller center.',
     // Aparece al dar de baja un ítem enseguida de haberlo sumado: la oferta
     // todavía no quedó registrada del lado de Meli.
+    // Si llegás a ver esto es porque el reintento con el id de la oferta
+    // tampoco alcanzó: o Meli no lo devuelve para esa campaña, o hace falta
+    // otro dato. El texto tiene que decir qué mirar, no repetir el inglés.
+    'offer id is required':
+      'Meli pide el id de la oferta para dar de baja esta campaña, y no lo pude ' +
+      'encontrar. Sincronizá y reintentá; si sigue, fijate el renglón en Registro ' +
+      'y pasámelo: ahí queda la campaña y la respuesta cruda.',
     'no offers found for item':
       'Meli dice que esa publicación no tiene ninguna oferta de ese tipo. Si la ' +
       'acabás de sumar, esperá unos segundos y reintentá: tarda en registrarla.',
@@ -1780,12 +2130,40 @@ function _hoja(nombre, cabecera) {
   return sh;
 }
 
+/**
+ * Vuelca una hoja entera.
+ *
+ * Limpiaba y después escribía. Si escribir fallaba —por ejemplo porque las
+ * filas tenían 34 valores y la cabecera 35, que es exactamente lo que pasó al
+ * agregar la columna offer_id— la hoja quedaba con el título y nada más: los
+ * datos se perdían y la app mostraba cero productos.
+ *
+ * Ahora las filas se emparejan al ancho de la cabecera ANTES de tocar nada, y
+ * si algo no cuadra se corta sin limpiar. Una sincronización que falla tiene
+ * que dejar los datos viejos, no dejarte sin datos.
+ */
 function _volcarHoja(nombre, cabecera, filas) {
   const sh = _hoja(nombre, cabecera);
+  const ancho = cabecera.length;
+
+  // Emparejar el ancho: se rellena lo que falte y se recorta lo que sobre.
+  const normal = (filas || []).map(function (f) {
+    const r = (f || []).slice(0, ancho);
+    while (r.length < ancho) r.push('');
+    return r;
+  });
+
+  // Se avisa si hubo que corregir: significa que alguien agregó una columna en
+  // un lado y se olvidó del otro, y conviene enterarse por el log.
+  const desparejas = (filas || []).filter(function (f) { return (f || []).length !== ancho; }).length;
+  if (desparejas)
+    Logger.log('OJO ' + nombre + ': ' + desparejas + ' filas no tenían ' + ancho +
+               ' columnas. Se emparejaron, pero hay algo desalineado en el código.');
+
   sh.clear();
-  sh.getRange(1, 1, 1, cabecera.length).setValues([cabecera])
+  sh.getRange(1, 1, 1, ancho).setValues([cabecera])
     .setFontWeight('bold').setBackground('#EEF2F1');
-  if (filas.length) sh.getRange(2, 1, filas.length, cabecera.length).setValues(filas);
+  if (normal.length) sh.getRange(2, 1, normal.length, ancho).setValues(normal);
   sh.setFrozenRows(1);
 }
 
@@ -1794,14 +2172,25 @@ function _volcarHoja(nombre, cabecera, filas) {
    9 · TRIGGERS Y DIAGNÓSTICO
    ═══════════════════════════════════════════════════════════════════════════ */
 
+/**
+ * Los dos triggers. Corrélo una vez; borra los que ya había, así no se
+ * duplican si lo corrés de nuevo.
+ *
+ * El del token pasó de cada 4 h a cada 2 h, y no rota más seguido por eso:
+ * ahora mira cuánto le queda y solo renueva si es menos de MARGEN_REFRESH.
+ * Lo que cambia es que hay TRES pasadas dentro de la vida del token en vez de
+ * una sola. Con una sola, si Google se saltea esa ejecución —pasa—, el token
+ * se vencía antes de la siguiente y había que autorizar a mano.
+ */
 function instalarTriggers() {
   ScriptApp.getProjectTriggers().forEach(function (t) {
     const f = t.getHandlerFunction();
     if (f === 'refrescarTokenProgramado' || f === 'sincronizarTodo') ScriptApp.deleteTrigger(t);
   });
-  ScriptApp.newTrigger('refrescarTokenProgramado').timeBased().everyHours(4).create();
+  ScriptApp.newTrigger('refrescarTokenProgramado').timeBased().everyHours(2).create();
   ScriptApp.newTrigger('sincronizarTodo').timeBased().atHour(7).everyDays(1).create();
-  Logger.log('Triggers instalados: refresh cada 4h, sync diaria 07:00.');
+  Logger.log('Triggers instalados: chequeo de token cada 2 h, sync diaria 07:00.');
+  Logger.log('(el chequeo mira si hace falta; renovar sigue siendo ~1 vez cada 4 h)');
 }
 
 function diagnostico() {
