@@ -476,7 +476,7 @@ const S = {
 /* Subilo cada vez que cambie el archivo. Sirve para saber, mirando la app,
    si el navegador está sirviendo la versión nueva o una cacheada: GitHub Pages
    guarda el index.html un rato y es fácil quedarse con el viejo sin notarlo. */
-const VERSION = '2026.09.01-46';
+const VERSION = '2026.09.01-48';
 /* Qué necesita el front del backend. Subir SOLO cuando se agrega o cambia una
    acción del /exec, no en cada retoque visual. */
 const CONTRATO_MINIMO = 4;
@@ -2278,7 +2278,7 @@ function vTapadas() {
 
     const fin = ocupar(bl, 'Sacando', 'lote');
     try {
-      const res = await enFila(() => api('lote', { acciones }));
+      const res = await enFila(() => enTandas(acciones, fin, 'Sacando'));
       const ok  = (res || []).filter(x => x.ok).length;
       const mal = (res || []).filter(x => !x.ok);
       const seg = fin();
@@ -2465,7 +2465,7 @@ function vRelampago() {
 
     const fin = ocupar(sr, 'Sumando', 'lote');
     try {
-      const res = await api('lote', { acciones });
+      const res = await enFila(() => enTandas(acciones, fin, 'Sumando'));
       const ok = (res||[]).filter(x => x.ok).length;
       const mal = (res||[]).filter(x => !x.ok);
       const seg = fin();
@@ -3763,6 +3763,46 @@ function avisoCredibilidad(it, precio, promo) {
   const pc = (1 - precio / ref) * 100;
   const deLista = it.lista ? (1 - precio / it.lista) * 100 : null;
 
+  /* ═══ EL TECHO DE MELI MANDA ═══
+     Medido el 01-sep en el ventilador 30006: el diálogo mostraba techo
+     $71.999, el precio era $55.999 —muy por debajo—, y esta función igual
+     cantó "Meli va a rechazar este precio" porque su propia cuenta contra los
+     $54.319 que se cobraban ese día daba −3,09%. Meli lo aceptó y quedó
+     vigente.
+
+     El error de fondo era de jerarquía. max_discounted_price es el techo que
+     Meli mismo publica para ESA campaña y ESA publicación: es su respuesta,
+     no una estimación nuestra. La regla del 5% contra el precio de hoy es
+     nuestra aproximación a lo que Meli hace por dentro, y ya falló dos veces
+     por la misma razón —la base real es el precio más bajo de los últimos 7
+     días, no el de hoy, y el precio de hoy puede venir de una campaña que
+     Meli no cuenta como tuya, como ¡Gánale a la competencia!—.
+
+     Así que: si Meli mandó su techo, ese decide. Nuestra cuenta pasa a ser una
+     nota al pie, nunca un veredicto. */
+  const techo = promo && promo.max ? +promo.max : null;
+  if (techo) {
+    const notaPct = pc < 5
+      ? `<div class="sub" style="margin-top:6px">Mi cuenta aparte daba otra cosa
+         —contra los ${pes(ref)} que cobrás hoy son ${pct2(pc)}, menos del 5%—, pero esa cuenta
+         es una aproximación: Meli compara contra el precio más bajo de los últimos ${VENTANA}
+         días, y el de hoy puede venir de una campaña que él no cuenta como tuya. El techo de
+         arriba lo dice él.</div>`
+      : (deLista != null
+          ? `<div class="sub" style="margin-top:6px">Son <b>${pct2(pc)}</b> abajo de los
+             ${pes(ref)} que cobrás hoy, y <b>−${pct(deLista)}</b> contra la lista de
+             ${pes(it.lista)}.</div>`
+          : '');
+
+    if (precio <= techo)
+      return `<div class="aviso ok">Entra: Meli acepta hasta <b>${pes(techo)}</b> en esta
+        campaña y estás pidiendo ${pes(precio)}.${notaPct}</div>`;
+
+    return `<div class="aviso bad"><b>Meli va a rechazar este precio.</b>
+      El techo que pone para esta campaña es <b>${pes(techo)}</b> y estás pidiendo
+      ${pes(precio)} — hacen falta ${pes(techo)} o menos.${notaPct}</div>`;
+  }
+
   // Los dos porcentajes, cada uno con su referencia escrita. El error fácil es
   // restar los de lista: con lista 11.427, vendiendo a 7.999 y oferta a 7.599,
   // contra la lista dan 30,0% y 33,5% —la resta sugiere "3,5%"— pero contra lo
@@ -3799,9 +3839,18 @@ function avisoCredibilidad(it, precio, promo) {
       ${VENTANA} días y lo redondea distinto que esta pantalla, y en el borde un peso decide.
       Con <b>${pes(seguro)}</b> o menos no depende de la suerte.${dosNumeros}</div>`;
 
-  return `<div class="aviso bad"><b>Meli va a rechazar este precio.</b>
-    Hoy cobrás <b>${pes(ref)}</b> y la oferta tiene que ser al menos <b>5% más barata</b>.
-    A ${pes(precio)} son ${pct2(pc)}, y hace falta ${pes(seguro)} o menos.${dosNumeros}</div>`;
+  /* Sin techo de Meli no hay veredicto posible, solo una advertencia.
+     Antes esto decía "Meli va a rechazar este precio" y no le constaba: la
+     base real es el precio más bajo de los últimos 7 días, no el de hoy. Se
+     avisa fuerte —casi siempre tiene razón— pero sin cerrar la puerta, y el
+     botón de sumar sigue habilitado para que lo decidas vos. */
+  return `<div class="aviso bad"><b>Con este precio es muy probable que Meli lo rechace.</b>
+    Hoy cobrás <b>${pes(ref)}</b> y la oferta tiene que ser al menos <b>5% más barata</b>:
+    a ${pes(precio)} son ${pct2(pc)}, y haría falta ${pes(seguro)} o menos.
+    <div class="sub" style="margin-top:6px">Meli no publicó su techo para esta campaña, así que
+    esto es mi cuenta, no la suya. Compara contra el precio más bajo de los últimos ${VENTANA}
+    días —que puede no ser el de hoy—, así que si estás seguro, probá: si lo rechaza te lo
+    digo con el motivo exacto.</div>${dosNumeros}</div>`;
 }
 
 /** Deja el error a la vista dentro del diálogo, en vez de un toast que se va. */
@@ -3969,6 +4018,37 @@ const DURACIONES = JSON.parse(localStorage.getItem('cdp_dur') || '{}');
    ═══════════════════════════════════════════════════════════ */
 let ENVUELO = null;
 
+/* ═══════════════════════════════════════════════════════════
+   EL TECHO DE LOS 6 MINUTOS
+
+   Google mata cualquier ejecución del Apps Script a los 6 minutos, sin aviso y
+   sin devolver nada. Un lote de 40 bajas tardó 360 segundos —el tope exacto— y
+   las últimas 12 no llegaron a ejecutarse: no fue un error, fue el reloj.
+
+   Así que el lote se manda en tandas. Cada pedido es una ejecución nueva con
+   su propio reloj, y entre tanda y tanda no se pierde nada: los resultados se
+   van juntando. TANDA está calculada con margen — el backend ahora tarda unos
+   2 s por baja, así que 12 son ~25 s contra un techo de 360.
+   ═══════════════════════════════════════════════════════════ */
+const TANDA = 12;
+
+/**
+ * Manda las acciones de a tandas y devuelve todos los resultados juntos.
+ * `fin` es lo que devolvió ocupar(): se usa para ir contando en el botón.
+ */
+async function enTandas(acciones, fin, verbo) {
+  const todo = [];
+  for (let i = 0; i < acciones.length; i += TANDA) {
+    const parte = acciones.slice(i, i + TANDA);
+    if (fin && fin.rotulo && acciones.length > TANDA)
+      fin.rotulo((verbo || 'Sacando') + ' ' + (i + 1) + '–' +
+                 Math.min(i + TANDA, acciones.length) + ' de ' + acciones.length);
+    const r = await api('lote', { acciones: parte });
+    (r || []).forEach(x => todo.push(x));
+  }
+  return todo;
+}
+
 /** Corre fn cuando termine lo que haya en curso. Devuelve lo que devuelva fn. */
 function enFila(fn) {
   const previa = ENVUELO || Promise.resolve();
@@ -3978,7 +4058,7 @@ function enFila(fn) {
   return mia;
 }
 
-function ocupar(el, etiqueta, clave) {
+function ocupar(el, etiqueta, clave) {  // etiqueta es mutable: la cambia fin.rotulo
   const t0 = Date.now();
   const previo = DURACIONES[clave] || null;
   const original = el ? el.innerHTML : null;
@@ -4000,7 +4080,9 @@ function ocupar(el, etiqueta, clave) {
   const timer = setInterval(pinta, 120);
   pinta();
 
-  return function fin(ok) {
+  // El lote va contando "Sacando 13-24 de 40": necesita poder cambiar el
+  // rótulo mientras corre, y el repintado de cada 120 ms lo pisaría.
+  const fin = function (ok) {
     clearInterval(timer);
     const s = Math.max(1, Math.round((Date.now() - t0) / 1000));
     if (ok !== false) { DURACIONES[clave] = s; localStorage.setItem('cdp_dur', JSON.stringify(DURACIONES)); }
@@ -4009,6 +4091,10 @@ function ocupar(el, etiqueta, clave) {
     if (el) { el.disabled = false; el.innerHTML = original; }
     return s;
   };
+  /* Cambia el texto que se repinta. Sin esto, escribirle al botón desde afuera
+     dura 120 ms: el intervalo lo vuelve a pisar en el siguiente tick. */
+  fin.rotulo = function (t) { etiqueta = t; pinta(); };
+  return fin;
 }
 
 /**
