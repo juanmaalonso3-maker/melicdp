@@ -79,7 +79,7 @@ const P = PropertiesService.getScriptProperties();
  * sync tardara 15 segundos desde el editor y 33 desde la app, sin ninguna
  * pista de por qué. Ahora la app muestra las dos versiones y el desfasaje se ve.
  */
-const VERSION_BACK = '2026.09.01-50';
+const VERSION_BACK = '2026.09.01-52';
 
 /**
  * Contrato: qué sabe responder este backend.
@@ -1553,6 +1553,13 @@ function _refrescarConfirmado(itemId, tipo, promoId, quiereAdentro) {
   var enCamp = _enListaCampania(itemId, tipo, promoId);
   if (enCamp !== null && enCamp === !!quiereAdentro) {
     Logger.log('refresco: la publicación va atrasada, pero la campaña CONFIRMA');
+    /* Y acá estaba el bicho gordo (medido el 01-sep en el SKU 30006).
+       Se devolvían las filas ATRASADAS —las que todavía dicen "started"— junto
+       con confirmado:true. El front parcheaba su estado con esas filas, así que
+       la campaña seguía apareciendo puesta en la pantalla aunque ya no lo
+       estuviera. Uno la volvía a sacar, y otra vez, sin que nada cambiara.
+       Si la campaña dice que salió, las filas tienen que decir lo mismo. */
+    if (!quiereAdentro) filas = _corregirSalida(filas, tipo, promoId);
     return { filas: filas, confirmado: true, fuente: 'la lista de la campaña' };
   }
 
@@ -1564,6 +1571,30 @@ function _refrescarConfirmado(itemId, tipo, promoId, quiereAdentro) {
   var ok = concuerda(filas);
   Logger.log('refresco: segunda lectura ' + (ok ? 'CONFIRMA' : 'sigue sin confirmar'));
   return { filas: filas, confirmado: ok, fuente: 'la publicación' };
+}
+
+/**
+ * Deja las filas diciendo lo que la campaña ya confirmó: que la publicación
+ * salió de esa promoción.
+ *
+ * No se borra el renglón: se lo pasa a "candidate", que es exactamente lo que
+ * Meli termina mostrando un minuto después —medido: OFFER-…11395347487 pasó a
+ * CANDIDATE-…71618363079— y significa "te la ofrezco, no estás adentro". Así la
+ * publicación sigue apareciendo como candidata para volver a sumarla, en vez de
+ * desaparecer hasta la próxima sincronización.
+ */
+function _corregirSalida(filas, tipo, promoId) {
+  if (!filas || !filas.length) return filas;
+  return filas.map(function (f) {
+    if (String(f.promo_tipo) !== String(tipo)) return f;
+    if (promoId && String(f.promo_id) !== String(promoId)) return f;
+    if (f.status !== 'started' && f.status !== 'pending') return f;
+    var g = {};
+    Object.keys(f).forEach(function (k) { g[k] = f[k]; });
+    g.status = 'candidate';
+    g.inicio = ''; g.fin = '';            // la ventana era la de la oferta que se fue
+    return g;
+  });
 }
 
 /**
@@ -1649,7 +1680,12 @@ function _offerIdDe(itemId, tipo, promoId) {
   } catch (e) { Logger.log('offer_id por campaña: ' + e); return ''; }
 }
 
-function salirDePromo(a) {
+/**
+ * La baja contra Meli y nada más: sin refrescar la hoja, sin confirmar, sin
+ * registrar. Existe aparte porque el lote necesita hacer las 40 llamadas
+ * primero y recién después verificar todo junto.
+ */
+function _salirCrudo(a) {
   const armarQs = function (offerId) {
     var q = '?app_version=v2&promotion_type=' + encodeURIComponent(a.promotion_type);
     if (a.promotion_id) q += '&promotion_id=' + encodeURIComponent(a.promotion_id);
@@ -1659,7 +1695,6 @@ function salirDePromo(a) {
 
   var offerId = a.offer_id || '';
   var qs = armarQs(offerId);
-  const t0 = Date.now();
   var r = _mlEscribir('delete', '/seller-promotions/items/' + a.item_id + qs, null);
 
   /* "Offer id is required": las campañas que arma Meli —SMART, PRICE_MATCHING—
@@ -1685,7 +1720,12 @@ function salirDePromo(a) {
     Utilities.sleep(5000);
     r = _mlEscribir('delete', '/seller-promotions/items/' + a.item_id + qs, null);
   }
+  return r;
+}
 
+function salirDePromo(a) {
+  const t0 = Date.now();
+  var r = _salirCrudo(a);
   const tEscritura = Date.now() - t0;
   const ficha = _fichaItem(a.item_id);
   if (!r.ok) {
@@ -1714,16 +1754,248 @@ function salirDePromo(a) {
            confirmado: conf.confirmado, fuente: conf.fuente };
 }
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   LOTES
+
+   Medido el 01-sep con 40 bajas: 360 segundos, y las últimas 12 no se
+   ejecutaron. 360 s es EXACTAMENTE el techo de Apps Script para un /exec:
+   Google mata la ejecución a los 6 minutos. No era lentitud, era el tope.
+
+   Nueve segundos por baja se iban en cosas que, dentro de un lote, no hacen
+   falta una por una:
+     · _fichaItem leía la hoja Datos ENTERA —1300 filas— en cada acción, solo
+       para poner el SKU en el registro. Cuarenta veces.
+     · _refrescarItem releía y reescribía la publicación en la hoja, también
+       una por una, con su llamada a Meli cada vez.
+     · _refrescarConfirmado, cuando la vista de la publicación venía atrasada
+       —que en una baja es lo NORMAL, tarda más de un minuto en actualizarse—,
+       dormía 4 segundos y releía. De ahí los 27 "dudosos" del registro.
+
+   Ahora el lote hace las tres cosas EN BLOQUE:
+     1. Las bajas contra Meli, una atrás de otra (esto no se puede paralelizar:
+        son escrituras sobre la misma cuenta).
+     2. La verificación de todas juntas, en UN pedido paralelo contra la lista
+        de cada campaña — que es la vista que se actualiza primero, así que ni
+        hace falta esperar.
+     3. Un solo refresco de la hoja para todas las publicaciones tocadas, con
+        una tanda paralela de lecturas y UNA escritura.
+
+   La hoja se lee una vez y se escribe una vez, en vez de 40 y 40.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
 function ejecutarLote(acciones) {
-  return acciones.map(function (a) {
-    try {
-      const res = a.accion === 'salir' ? salirDePromo(a) : sumarAPromo(a);
-      Utilities.sleep(400);
-      return { item_id: a.item_id, ok: true, res: res };
-    } catch (err) {
-      return { item_id: a.item_id, ok: false, error: String(err.message || err) };
-    }
+  if (!acciones || !acciones.length) return [];
+  // Las altas siguen de a una: cada una necesita su propia verificación de
+  // precio y son pocas. Las bajas son las que vienen de a decenas.
+  const todasBajas = acciones.every(function (a) { return a.accion === 'salir'; });
+  if (!todasBajas) {
+    return acciones.map(function (a) {
+      try {
+        const res = a.accion === 'salir' ? salirDePromo(a) : sumarAPromo(a);
+        Utilities.sleep(400);
+        return { item_id: a.item_id, ok: true, res: res };
+      } catch (err) {
+        return { item_id: a.item_id, ok: false, error: String(err.message || err) };
+      }
+    });
+  }
+  return _loteSalir(acciones);
+}
+
+function _loteSalir(acciones) {
+  const t0 = Date.now();
+  const marca = {};
+  const paso = function (n) { marca[n] = Math.round((Date.now() - t0) / 1000); };
+
+  // Los SKU y títulos de todos, leyendo la hoja UNA vez.
+  const fichas = _fichasDe(acciones.map(function (a) { return a.item_id; }));
+
+  /* 1 · Las bajas. Solo la llamada a Meli. */
+  const res = acciones.map(function (a, i) {
+    if (i) Utilities.sleep(250);
+    var r;
+    try { r = _salirCrudo(a); }
+    catch (e) { return { a: a, ok: false, error: String(e.message || e) }; }
+    return r.ok ? { a: a, ok: true }
+                : { a: a, ok: false, error: _mensajeError(r), code: r.code, texto: r.texto };
   });
+  paso('bajas');
+
+  /* 2 · La verificación, todas juntas y en paralelo. */
+  const confirmado = _confirmarBajas(res.filter(function (x) { return x.ok; })
+                                        .map(function (x) { return x.a; }));
+  paso('verificacion');
+
+  /* 3 · La hoja al día, en un solo movimiento. */
+  const tocados = res.filter(function (x) { return x.ok; })
+                     .map(function (x) { return x.a.item_id; });
+  /* Ojo con esto: la vista de la publicación tarda más de un minuto en
+     enterarse de una baja. Si se vuelca tal cual, la hoja queda diciendo que
+     la campaña sigue puesta y la pantalla te miente —era el bug del SKU 30006—.
+     Por eso se le pasa lo que la campaña YA confirmó, para corregirlo. */
+  const fuera = {};
+  Object.keys(confirmado).forEach(function (k) { if (confirmado[k] === true) fuera[k] = true; });
+  try { _refrescarVarios(tocados, fuera); }
+  catch (e) { Logger.log('lote: no pude refrescar la hoja — ' + e); }
+  paso('hoja');
+
+  /* 4 · El registro, con lo que de verdad pasó en cada una. */
+  const salida = res.map(function (x) {
+    const a = x.a, f = fichas[String(a.item_id)] || {};
+    const base = { sku: f.sku, producto: f.producto, tipo: a.promotion_type,
+                   campania: a.promotion_id || '' };
+
+    if (!x.ok) {
+      _log('salir', a.item_id, a.promotion_type + ' ' + (a.promotion_id || ''),
+           'ERROR ' + (x.code || '') + ' ' + (x.texto || x.error),
+           Object.assign({ resultado: 'rechazado', motivo: x.error }, base));
+      return { item_id: a.item_id, ok: false, error: x.error };
+    }
+
+    const k = a.item_id + '|' + a.promotion_type + '|' + (a.promotion_id || '');
+    const fuera = confirmado[k];           // true / false / null (no se pudo ver)
+    _log('salir', a.item_id, a.promotion_type + ' ' + (a.promotion_id || ''), 'OK',
+         Object.assign({
+           resultado: fuera === true ? 'hecho' : 'dudoso',
+           confirmado: fuera === true,
+           motivo: fuera === true ? ''
+             : fuera === false
+               ? 'Meli aceptó el pedido pero la campaña sigue mostrando la publicación adentro.'
+               : 'Meli aceptó el pedido; no se pudo consultar la campaña para confirmarlo.'
+         }, base));
+    return { item_id: a.item_id, ok: true, confirmado: fuera === true };
+  });
+
+  marca.total = Math.round((Date.now() - t0) / 1000);
+  Logger.log('lote de ' + acciones.length + ' bajas → ' + JSON.stringify(marca));
+  return salida;
+}
+
+/**
+ * ¿Quedaron afuera? Se le pregunta a la LISTA DE CADA CAMPAÑA, que es la vista
+ * que se actualiza primero —la de la publicación tarda más de un minuto—, y se
+ * preguntan todas de una en una tanda paralela.
+ *
+ * Devuelve {item|tipo|promo: true/false/null}. null es "no se pudo ver", que no
+ * es lo mismo que "sigue adentro" y por eso no se colapsa a false.
+ */
+function _confirmarBajas(acciones) {
+  const rutas = [], deRuta = {}, salida = {};
+  acciones.forEach(function (a) {
+    const k = a.item_id + '|' + a.promotion_type + '|' + (a.promotion_id || '');
+    if (!a.promotion_id || !a.promotion_type) { salida[k] = null; return; }
+    const ruta = '/seller-promotions/promotions/' + encodeURIComponent(a.promotion_id) +
+      '/items?promotion_type=' + encodeURIComponent(a.promotion_type) +
+      '&item_id=' + encodeURIComponent(a.item_id) + '&app_version=v2';
+    rutas.push(ruta); deRuta[ruta] = { a: a, k: k };
+  });
+  if (!rutas.length) return salida;
+
+  const r = mlGetMuchos(rutas);
+  rutas.forEach(function (ruta) {
+    const d = deRuta[ruta];
+    if (r[ruta] === undefined) { salida[d.k] = null; return; }   // no contestó
+    var enc = null;
+    _arr(r[ruta]).forEach(function (y) {
+      if (String(y.id) === String(d.a.item_id)) enc = y;
+    });
+    const adentro = !!(enc && (enc.status === 'started' || enc.status === 'pending'));
+    salida[d.k] = !adentro;
+  });
+  return salida;
+}
+
+/**
+ * Refresca varias publicaciones en la hoja de una sola vez.
+ *
+ * La versión de a una (_refrescarItem) lee la columna de ids, lee el bloque,
+ * llama a Meli, escribe, y a veces inserta o borra renglones. Hacer eso 40
+ * veces es lo que hacía que un lote tardara minutos —y encima cada inserción
+ * corría las filas, que es lo que se pisaba al mandar varias en paralelo—.
+ *
+ * Acá se lee la hoja una vez, se piden todas las publicaciones en una tanda
+ * paralela, y se vuelca la hoja entera una sola vez.
+ */
+function _refrescarVarios(ids, fuera) {
+  if (!ids || !ids.length) return false;
+  fuera = fuera || {};
+  const quiero = {};
+  ids.forEach(function (i) { if (i) quiero[String(i)] = true; });
+  const lista = Object.keys(quiero);
+  if (!lista.length) return false;
+
+  const sh = _ss().getSheetByName('Datos');
+  if (!sh || sh.getLastRow() < 2) return false;
+  const ancho  = sh.getLastColumn();
+  const cab    = sh.getRange(1, 1, 1, ancho).getValues()[0];
+  const viejas = sh.getRange(2, 1, sh.getLastRow() - 1, ancho).getValues();
+
+  /* De la hoja se reusan dos cosas: la parte del renglón que describe al ítem
+     —título, sku, costos— y las ventanas de las relámpago, que no bajan a la
+     publicación y no cambian porque entres o salgas de otra promoción. */
+  const base = {}, ventanas = {};
+  viejas.forEach(function (r) {
+    const id = String(r[0]);
+    if (!quiero[id]) return;
+    if (!base[id]) base[id] = r.slice();
+    if (r[24] || r[25]) ventanas[id + '|' + String(r[12])] = [r[24], r[25]];
+  });
+
+  const ruta = function (id) { return '/seller-promotions/items/' + id + '?app_version=v2'; };
+  const resp = mlGetMuchos(lista.map(ruta));
+
+  const nuevas = {};
+  lista.forEach(function (id) {
+    if (resp[ruta(id)] === undefined || !base[id]) return;   // sin datos: queda lo viejo
+    nuevas[id] = _arr(resp[ruta(id)]).map(function (p) {
+      /* Si la campaña ya confirmó que salió pero la publicación todavía la
+         muestra puesta, mandamos lo que dice la campaña. "candidate" es
+         justo el estado al que Meli la lleva un minuto después. */
+      if ((p.status === 'started' || p.status === 'pending') &&
+          fuera[id + '|' + p.type + '|' + (p.id || '')]) {
+        var q = {};
+        Object.keys(p).forEach(function (k) { q[k] = p[k]; });
+        q.status = 'candidate'; q.start_date = ''; q.finish_date = '';
+        p = q;
+      }
+      return _filaPromo(base[id], p, ventanas[id + '|' + String(p.id)] || ['', '']);
+    });
+  });
+
+  // Se rearma la hoja respetando el orden original: donde estaba la primera
+  // fila de un ítem refrescado van todas sus filas nuevas.
+  const filas = [], puesto = {};
+  viejas.forEach(function (r) {
+    const id = String(r[0]);
+    if (!nuevas[id]) { filas.push(r); return; }
+    if (puesto[id]) return;                       // sus renglones ya se volcaron
+    puesto[id] = true;
+    nuevas[id].forEach(function (f) { filas.push(f); });
+  });
+
+  _volcarHoja('Datos', cab, filas);
+  Logger.log('refresco en bloque: ' + Object.keys(nuevas).length + ' publicaciones, ' +
+             filas.length + ' filas');
+  return true;
+}
+
+/** Los SKU y títulos de varios ítems, leyendo la hoja Datos UNA sola vez. */
+function _fichasDe(ids) {
+  const quiero = {}, salida = {};
+  (ids || []).forEach(function (i) { if (i) quiero[String(i)] = true; });
+  try {
+    const sh = _ss().getSheetByName('Datos');
+    if (!sh || sh.getLastRow() < 2) return salida;
+    const cab = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0];
+    const cId = cab.indexOf('item_id'), cSku = cab.indexOf('sku'), cTit = cab.indexOf('titulo');
+    const todo = sh.getRange(2, 1, sh.getLastRow() - 1, sh.getLastColumn()).getValues();
+    todo.forEach(function (r) {
+      const id = String(r[cId]);
+      if (!quiero[id] || salida[id]) return;
+      salida[id] = { sku: r[cSku], producto: String(r[cTit] || '').slice(0, 60) };
+    });
+  } catch (e) { Logger.log('fichas: ' + e); }
+  return salida;
 }
 
 function _mensajeError(r) {

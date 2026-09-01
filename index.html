@@ -471,12 +471,14 @@ const S = {
   // baja en sí —publicación|tipo|promo—, no el renglón: si una publicación
   // aparece dos veces porque tiene dos tapadas, las dos filas comparten la
   // misma baja y se tildan juntas. Es una sola acción, no dos.
-  tapSel:new Set(), tapFilas:new Set()
+  tapSel:new Set(), tapFilas:new Set(),
+  // Qué campaña mirar en Actualizar precios. Vacío = ninguna.
+  campPrecio:''
 };
 /* Subilo cada vez que cambie el archivo. Sirve para saber, mirando la app,
    si el navegador está sirviendo la versión nueva o una cacheada: GitHub Pages
    guarda el index.html un rato y es fácil quedarse con el viejo sin notarlo. */
-const VERSION = '2026.09.01-48';
+const VERSION = '2026.09.01-49';
 /* Qué necesita el front del backend. Subir SOLO cuando se agrega o cambia una
    acción del /exec, no en cada retoque visual. */
 const CONTRATO_MINIMO = 4;
@@ -2510,9 +2512,130 @@ function escalonesDe(g) {
   return [...m.values()].sort((a,b) => a.lista - b.lista);
 }
 
+/* ═══════════════════════════════════════════════════════════
+   MIRAR UNA CAMPAÑA MIENTRAS SE TOCAN LOS PRECIOS
+
+   Poner un precio de lista a ciegas y después descubrir que la campaña que te
+   interesa no lo acepta es rehacer todo. Con una campaña elegida arriba, cada
+   condición muestra qué descuento pide Meli ahí y si el que estás escribiendo
+   entra — antes de aplicar nada.
+
+   Se listan TODAS las campañas, no solo las que corren hoy: la gracia es poder
+   preparar el precio para la que viene.
+   ═══════════════════════════════════════════════════════════ */
+
+/** Todas las campañas conocidas, vengan de donde vengan. */
+function campanasTodas() {
+  const m = new Map();
+  // Las de la hoja Campanias: el catálogo completo, corran o no.
+  (S.camps || []).forEach(c => {
+    const id = String(c.promo_id || '');
+    if (!id) return;
+    m.set(id, { id, nombre: c.nombre || id, tipo: c.tipo || '',
+                inicio: c.inicio || '', fin: c.fin || '' });
+  });
+  // Y las que aparecen en las publicaciones, por si alguna no está en la hoja.
+  S.items.forEach(it => (it.promos || []).forEach(p => {
+    if (!p.promoId || m.has(p.promoId)) return;
+    m.set(p.promoId, { id: p.promoId, nombre: p.promo || p.promoId,
+                       tipo: p.tipo || '', inicio: p.inicio || '', fin: p.fin || '' });
+  }));
+  return [...m.values()].sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
+}
+
+/**
+ * Lo que Meli ofrece para esta condición en esa campaña.
+ *
+ * Una condición puede tener varias publicaciones (la clásica y la de catálogo).
+ * Se queda con la que traiga números; si ninguna los trae, con cualquiera que
+ * al menos tenga la campaña, para poder decir "te la ofrece pero sin datos".
+ */
+function ofertaDeCampania(e, campId) {
+  if (!campId) return null;
+  let conDatos = null, cualquiera = null;
+  e.pubs.forEach(p => (p.promos || []).forEach(x => {
+    if (String(x.promoId) !== String(campId)) return;
+    if (!cualquiera) cualquiera = x;
+    if (!conDatos && (x.pisoPct != null || x.sugPct != null)) conDatos = x;
+  }));
+  return conDatos || cualquiera;
+}
+
+/**
+ * ¿Meli va a aceptar este descuento en esta campaña?
+ *
+ * Dos cosas distintas tienen que dar bien, y conviene no mezclarlas:
+ *
+ *   1. El descuento mínimo de la campaña. Meli lo publica por publicación
+ *      (max_discounted_price), y acá se usa en PORCENTAJE a propósito: el
+ *      monto está calculado contra la lista de hoy, y si estás justamente
+ *      cambiando la lista, ese monto deja de valer. El porcentaje sobrevive.
+ *
+ *   2. La credibilidad. Aunque el descuento alcance, la oferta tiene que
+ *      quedar al menos 5% por debajo de lo que venís cobrando. Si no, hay que
+ *      sacar las ofertas y dejar correr los 7 días — que es exactamente para
+ *      lo que está el botón de al lado.
+ */
+function veredictoCampania(e, oferta, desc, listaNueva) {
+  if (!oferta) return { clase: 'mut', txt: 'no te la ofrece',
+    detalle: 'Meli no ofrece esta campaña para esta condición de venta.' };
+
+  const piso  = oferta.pisoPct;      // descuento MÍNIMO que pide la campaña
+  const techo = oferta.techoPct;     // descuento MÁXIMO que permite
+  if (piso == null && techo == null)
+    return { clase: 'mut', txt: 'sin datos',
+      detalle: 'Meli ofrece esta campaña acá pero no publicó sus límites.' };
+
+  if (piso != null && desc < piso - 0.05)
+    return { clase: 'bad', txt: 'falta descuento',
+      detalle: 'Esta campaña pide al menos ' + pct(piso) + ' de descuento y estás poniendo ' +
+               pct(desc) + '.' };
+
+  if (techo != null && desc > techo + 0.05)
+    return { clase: 'bad', txt: 'pasa del máximo',
+      detalle: 'Esta campaña permite hasta ' + pct(techo) + ' y estás poniendo ' + pct(desc) + '.' };
+
+  /* El descuento entra. Falta la credibilidad, que se mide contra lo que
+     estás cobrando HOY, no contra la lista. */
+  const vivos = e.pubs.map(p => p.precioActivo).filter(Boolean);
+  if (!vivos.length)
+    return { clase: 'ok', txt: 'entra',
+      detalle: 'El descuento está dentro de lo que pide la campaña, y hoy no tenés ninguna ' +
+               'oferta corriendo acá, así que la credibilidad no la frena.' };
+
+  const cobrasHoy = Math.min(...vivos);
+  const nuevo = Math.round((listaNueva || e.lista) * (1 - desc / 100));
+  const bajaPct = (1 - nuevo / cobrasHoy) * 100;
+
+  if (bajaPct >= 5)
+    return { clase: 'ok', txt: 'entra',
+      detalle: 'El descuento entra y el precio queda ' + pct(bajaPct) + ' abajo de los ' +
+               pes(cobrasHoy) + ' que cobrás hoy — más del 5% que pide la credibilidad.' };
+
+  return { clase: 'warn', txt: 'hay que resetear',
+    detalle: 'El descuento entra en la campaña, pero a ' + pes(nuevo) + ' la oferta queda ' +
+             (bajaPct >= 0 ? 'solo ' + pct2(bajaPct) : pct2(Math.abs(bajaPct)) + ' por ENCIMA') +
+             ' de los ' + pes(cobrasHoy) + ' que cobrás hoy, y la credibilidad pide 5%. ' +
+             'Sacá las ofertas de esta condición y dejá correr los ' + VENTANA + ' días.' };
+}
+
+/** Las promociones puestas de una condición: lo que hay que sacar para resetear. */
+function ofertasPuestasDe(e) {
+  const out = [];
+  e.pubs.forEach(p => (p.promos || []).forEach(x => {
+    // Los cupones son de la cuenta, no de la publicación: se manejan en Mi página.
+    if (x.esCupon) return;
+    if (x.status !== 'started' && x.status !== 'pending') return;
+    out.push({ pub: p, promo: x });
+  }));
+  return out;
+}
+
 function vPrecios() {
   $('#tit').textContent = 'Actualizar precios';
   const abiertos = S.preciosAbiertos;
+  const camps = campanasTodas();
+  const campSel = camps.find(c => c.id === S.campPrecio) || null;
 
   const filtrados = S.skus.filter(g =>
     !S.q || (g.sku + ' ' + g.titulo).toLowerCase().includes(S.q.toLowerCase()));
@@ -2554,6 +2677,8 @@ function vPrecios() {
           <th class="r">Lista actual</th>
           <th class="r">Precio al cliente</th>
           <th class="c">Descuento</th>
+          ${campSel ? `<th class="c">Meli sugiere<br><small style="font-weight:400">en ${esc(campSel.nombre.slice(0,22))}</small></th>
+          <th class="c">¿Entra?</th>` : ''}
           <th class="r">Lista nueva</th>
           <th class="c">Cambio</th>
           <th></th>
@@ -2561,13 +2686,29 @@ function vPrecios() {
         <tbody>${escs.map((e,i) => {
           const { desc:d, target } = edicion(g.sku, i, e);
           const viva = e.pubs.map(p => p.precioActivo).filter(Boolean);
+          const of = campSel ? ofertaDeCampania(e, campSel.id) : null;
+          const puestas = ofertasPuestasDe(e);
+          const v = campSel ? veredictoCampania(e, of, d, e.lista) : null;
           return `<tr data-esc="${i}">
             <td><b>${esc(e.etiqueta)}</b>
               <div class="sub">${esc(tipoLabel(e.tipo))} · ${e.pubs.length} pub${e.pubs.length>1?'s':''}${
-                viva.length ? ' · vendiendo hoy a ' + pes(Math.min(...viva)) : ''}</div></td>
+                viva.length ? ' · vendiendo hoy a ' + pes(Math.min(...viva)) : ''}</div>
+              ${puestas.length
+                ? `<button class="btn xs danger" style="margin-top:5px"
+                     data-limpiar="${esc(g.sku)}|${i}"
+                     title="Saca las ${puestas.length} promociones puestas en esta condición. Es lo que arranca el reloj de credibilidad de ${VENTANA} días.">Sacar de todas las ofertas (${puestas.length})</button>`
+                : `<div class="sub" style="margin-top:4px;color:var(--ok)">sin ofertas puestas</div>`}</td>
             <td class="r n" style="color:var(--ink3)">${pes(e.lista)}</td>
             <td class="r"><input type="number" class="pTarget" data-i="${i}" value="${target}" step="1"></td>
             <td class="c"><input type="number" class="pDesc" data-i="${i}" value="${d}" min="0" max="95" step="1"> %</td>
+            ${campSel ? `<td class="c n">${of && of.sugPct != null
+                ? `<b>${pct(of.sugPct)}</b>` : '<span style="color:var(--ink3)">—</span>'}
+                <div class="sub">${of && of.pisoPct != null
+                  ? 'mín ' + pct(of.pisoPct) + (of.techoPct != null ? ' · máx ' + pct(of.techoPct) : '')
+                  : ''}</div></td>
+              <td class="c"><span class="pVeredicto" data-i="${i}"
+                style="font-size:11.5px;color:var(--${v.clase==='ok'?'ok':v.clase==='bad'?'bad':v.clase==='warn'?'warn':'ink3'})"
+                title="${esc(v.detalle)}">${esc(v.txt)}</span></td>` : ''}
             <td class="r n"><b class="pLista" data-i="${i}">${pes(e.lista)}</b></td>
             <td class="c"><span class="pDelta" data-i="${i}" style="color:var(--ink3);font-size:11.5px">sin cambio</span></td>
             <td class="r"><span class="sub">${e.pubs.map(p=>p.id).join('<br>')}</span></td>
@@ -2596,8 +2737,22 @@ function vPrecios() {
       <input type="text" id="qprecio" placeholder="Buscar por nombre o SKU" value="${esc(S.q)}" autocomplete="off">
       <span style="color:var(--ink3);font-size:12px">${filtrados.length} de ${S.skus.length}</span>
       <span class="sep-flex"></span>
+      <label style="font-size:12px;color:var(--ink3)">Mirar campaña
+        <select id="campPrecio" style="margin-left:6px">
+          <option value="">— ninguna —</option>
+          ${camps.map(c => `<option value="${esc(c.id)}"${c.id===S.campPrecio?' selected':''}>${
+            esc(c.nombre.slice(0,42))}${c.fin ? ' · hasta ' + esc(fecha(c.fin)) : ''}</option>`).join('')}
+        </select></label>
       <button class="btn sm" id="abrirTodos">${abiertos.size ? 'Cerrar todos' : 'Abrir todos'}</button>
     </div>
+
+    ${campSel ? `<div class="aviso">Mirando <b>${esc(campSel.nombre)}</b>${
+      campSel.inicio || campSel.fin ? ' · ' + esc(vigenciaTexto(campSel)) : ''}.
+      En cada condición vas a ver el descuento que Meli sugiere ahí, su mínimo y su máximo, y si el
+      que estás escribiendo entra. <b>¿Entra?</b> mira dos cosas: que el descuento esté dentro de lo
+      que pide la campaña, y que el precio quede 5% abajo de lo que cobrás hoy. Si dice
+      <b>hay que resetear</b>, el problema es el segundo: sacá las ofertas de esa condición con el
+      botón de la izquierda y dejá correr los ${VENTANA} días.</div>` : ''}
 
     <div class="panel"><div class="scroll"><table class="listado">
       <thead><tr><th></th><th>Producto</th><th class="c">Condiciones</th><th class="r">Lista más baja</th>
@@ -2636,6 +2791,72 @@ function engancharPrecios() {
   if (i) { let t; i.oninput = e => { clearTimeout(t);
     t = setTimeout(() => { S.q = e.target.value.trim(); render(); const c=$('#qprecio'); if(c) c.focus(); }, 250); }; }
 
+  const cp = $('#campPrecio');
+  if (cp) cp.onchange = () => { S.campPrecio = cp.value; render(); };
+
+  /* Sacar de todas las ofertas, por condición de venta.
+     Es la maniobra que ya venías haciendo a mano: para que el reloj de
+     credibilidad arranque hay que quedar SIN ninguna oferta puesta, no con
+     menos. Por eso saca todas las de esa condición de una, y no de a una. */
+  $$('[data-limpiar]').forEach(b => b.onclick = async () => {
+    const [sku, idx] = b.dataset.limpiar.split('|');
+    const g = S.skus.find(x => x.sku === sku);
+    if (!g) return;
+    const e = escalonesDe(g)[+idx];
+    if (!e) return;
+
+    const puestas = ofertasPuestasDe(e);
+    const bloqueadas = puestas.filter(x => SALIDA_BLOQUEADA[x.promo.tipo]);
+    const sacables   = puestas.filter(x => !SALIDA_BLOQUEADA[x.promo.tipo]);
+    if (!sacables.length) {
+      toast('Ninguna de estas se puede sacar por API. Hay que hacerlo en Meli.', 'warn');
+      return;
+    }
+
+    const acciones = sacables.map(x => ({
+      accion:'salir', item_id: x.pub.id, promotion_type: x.promo.tipo,
+      promotion_id: x.promo.promoId || undefined,
+      offer_id: x.promo.offerId || undefined
+    }));
+    const detalle = sacables.slice(0, 14).map(x =>
+      '   ' + x.pub.id + '  →  ' + nombrePromo(x.promo)).join('\n') +
+      (sacables.length > 14 ? '\n   … y ' + (sacables.length - 14) + ' más' : '');
+
+    if (!confirm('Sacar ' + acciones.length + ' promoción' + (acciones.length===1?'':'es') +
+      ' de ' + g.sku + ' · ' + e.etiqueta + ':\n\n' + detalle +
+      (bloqueadas.length ? '\n\nOJO: ' + bloqueadas.length + ' no se pueden sacar por API (' +
+        [...new Set(bloqueadas.map(x => nombrePromo(x.promo)))].join(', ') +
+        '). Esas hay que sacarlas en Meli, y mientras sigan puestas el reloj no arranca.' : '') +
+      '\n\nDespués de esto la condición queda SIN ofertas y arranca el reloj de credibilidad de ' +
+      VENTANA + ' días. Recién entonces conviene subir el precio de lista.\n\n¿Confirmás?')) return;
+
+    const fin = ocupar(b, 'Sacando', 'lote');
+    try {
+      const res = await enFila(() => enTandas(acciones, fin, 'Sacando'));
+      const ok  = (res || []).filter(x => x.ok).length;
+      const mal = (res || []).filter(x => !x.ok);
+      const seg = fin();
+      S.resultado = {
+        ok: mal.length === 0 ? true : (ok ? null : false), seg,
+        titulo: mal.length === 0
+          ? g.sku + ' · ' + e.etiqueta + ' quedó sin ofertas'
+          : ok + ' sacadas y ' + mal.length + ' rechazadas',
+        detalle: mal.length
+          ? 'Rechazadas: ' + mal.slice(0,6).map(x => x.item_id + ' (' + x.error + ')').join(' · ') +
+            '. El detalle completo está en Registro.'
+          : 'El reloj de credibilidad de ' + VENTANA + ' días arranca ahora.' +
+            (bloqueadas.length ? ' Ojo: quedan ' + bloqueadas.length +
+              ' que hay que sacar en Meli para que el reloj cuente de verdad.' : '')
+      };
+      await cargar();
+    } catch (err) {
+      fin(false);
+      S.resultado = { ok:false, titulo:'Mercado Libre rechazó el pedido',
+                      detalle:String(err.message || err) };
+      render(); refrescarRegistro();
+    }
+  });
+
   // Cada tabla abierta se engancha por separado: se pueden tener varios
   // productos desplegados a la vez y cada uno recalcula lo suyo.
   $$('.tprecios').forEach(tabla => {
@@ -2669,6 +2890,21 @@ function engancharPrecios() {
         delta.textContent = (dif > 0 ? '▲ ' : '▼ ') + pes(Math.abs(dif)) + '  (' + pct(Math.abs(pc)) + ')';
         delta.style.color = dif > 0 ? 'var(--ok)' : 'var(--bad)';
         if (fila) fila.classList.add('cambia');
+      });
+      /* El veredicto de la campaña también, en el mismo pasada: la gracia es
+         verlo cambiar mientras tipeás el descuento, no después de aplicar. */
+      if (S.campPrecio) q('.pVeredicto').forEach(cel => {
+        const idx = +cel.dataset.i, e = escs[idx];
+        if (!e) return;
+        const dInp = tabla.querySelector(`.pDesc[data-i="${idx}"]`);
+        const tInp = tabla.querySelector(`.pTarget[data-i="${idx}"]`);
+        const d = dInp ? (+dInp.value || 0) : 0;
+        const nueva = listaDesde(+((tInp||{}).value || 0), d) || e.lista;
+        const v = veredictoCampania(e, ofertaDeCampania(e, S.campPrecio), d, nueva);
+        cel.textContent = v.txt;
+        cel.title = v.detalle;
+        cel.style.color = 'var(--' + (v.clase === 'ok' ? 'ok' : v.clase === 'bad' ? 'bad'
+                          : v.clase === 'warn' ? 'warn' : 'ink3') + ')';
       });
     };
     // Los dos campos se recuerdan apenas se tocan: si cerrás y volvés a abrir,
