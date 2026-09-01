@@ -469,7 +469,7 @@ const S = {
 /* Subilo cada vez que cambie el archivo. Sirve para saber, mirando la app,
    si el navegador está sirviendo la versión nueva o una cacheada: GitHub Pages
    guarda el index.html un rato y es fácil quedarse con el viejo sin notarlo. */
-const VERSION = '2026.08.31-41';
+const VERSION = '2026.09.01-43';
 /* Qué necesita el front del backend. Subir SOLO cuando se agrega o cambia una
    acción del /exec, no en cada retoque visual. */
 const CONTRATO_MINIMO = 4;
@@ -619,10 +619,19 @@ const linkPromos = busq => busq
   ? SELLER_PROMOS + '?page=1&search=' + encodeURIComponent(String(busq).trim())
   : SELLER_PROMOS;
 
-const SALIDA_BLOQUEADA = {
-  PRICE_MATCHING: 'Meli no habilita salir de esta campaña por API — la arma ella y ' +
-                  'contesta "no tenés permisos". Se sale desde el seller center.'
-};
+/* Arranca vacío a propósito.
+ *
+ * Acá tenía puesto PRICE_MATCHING, apoyándome en una prueba que dio 404 y 403.
+ * Pero esa prueba nunca mandó promotion_id Y offer_id juntos — y después
+ * quedó demostrado que ese era justamente el dato que faltaba: con el offer_id,
+ * las bajas de SMART pasaron de "Offer id is required" a 200 a la primera.
+ *
+ * Así que la conclusión anterior no se sostiene: estaba sacada de una llamada
+ * mal armada. Mejor que la app intente con la llamada correcta y aprenda del
+ * resultado real, a que yo le prohíba algo por una medición vieja. Si Meli
+ * rechaza por permisos, se anota sola (ver aprenderSalidaBloqueada) y deja de
+ * ofrecer el botón — pero con evidencia de verdad, no con una suposición mía. */
+const SALIDA_BLOQUEADA = {};
 try {
   (JSON.parse(localStorage.getItem('cdp_salida_bloqueada') || '[]') || []).forEach(t => {
     if (!SALIDA_BLOQUEADA[t])
@@ -1846,8 +1855,13 @@ function engancharAcciones() {
   });
   $$('[data-del]').forEach(b => b.onclick = async () => {
     const [id,tipo,pid] = b.dataset.del.split('|');
+    const it = S.items.find(x => x.id === id);
     if (!confirm('¿Sacar esta publicación de ' + tipo + '?\n\nOjo: el reloj de credibilidad de 7 días arranca recién ahora.')) return;
-    try { await escribir('salir', {item_id:id, promotion_type:tipo, promotion_id:pid||undefined},
+    // El id de la oferta va si lo tenemos: las campañas que arma Meli se dan de
+    // baja por la oferta, no por la campaña. Si falta, el backend lo busca.
+    const pr = it && it.promos.find(x => x.tipo === tipo && String(x.promoId) === String(pid));
+    try { await escribir('salir', {item_id:id, promotion_type:tipo, promotion_id:pid||undefined,
+                                   offer_id:(pr && pr.offerId) || undefined},
                          'Salió de ' + tipo, b); }
     catch(e){ toast(e.message,'bad'); }
   });
